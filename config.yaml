@@ -1,0 +1,39 @@
+# PRIMORDIAL V2 Configuration
+# High-performance ecosystem simulator
+
+world:
+  grid_size: 80
+  food_regen_rate: 0.3
+  food_max: 100.0
+  initial_food_density: 0.5
+
+organisms:
+  initial_population: 200
+  initial_energy: 80.0
+  reproduction_cost: 25.0
+  reproduction_threshold: 50.0
+  metabolism_base: 0.5
+  food_energy: 25.0
+  move_cost: 0.3
+
+neural:
+  n_inputs: 20
+  n_outputs: 10
+  use_instincts: true
+
+evolution:
+  mutation_rate: 0.05
+  mutation_strength: 0.3
+  add_neuron_rate: 0.03
+  add_connection_rate: 0.05
+
+safety:
+  max_population: 5000
+  max_energy: 500.0
+  max_age: 5000
+  max_neurons: 50
+
+logging:
+  checkpoint_interval: 500
+  stats_interval: 50
+  log_level: info

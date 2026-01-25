@@ -1,0 +1,39 @@
+# PRIMORDIAL V2 Configuration
+# Target: Gen 100 @ ~3000 steps (max turnover)
+
+world:
+  grid_size: 80
+  food_regen_rate: 0.5
+  food_max: 40.0
+  initial_food_density: 0.4
+
+organisms:
+  initial_population: 500
+  initial_energy: 60.0
+  reproduction_cost: 20.0        # Molto basso - riproduzione facile
+  reproduction_threshold: 40.0   # Soglia molto bassa
+  metabolism_base: 2.5           # Alto consumo
+  food_energy: 15.0
+  move_cost: 0.3
+
+neural:
+  n_inputs: 20
+  n_outputs: 10
+  use_instincts: true
+
+evolution:
+  mutation_rate: 0.05
+  mutation_strength: 0.3
+  add_neuron_rate: 0.03
+  add_connection_rate: 0.05
+
+safety:
+  max_population: 10000
+  max_energy: 150.0
+  max_age: 500                   # Vita molto breve
+  max_neurons: 50
+
+logging:
+  checkpoint_interval: 500
+  stats_interval: 100
+  log_level: info
