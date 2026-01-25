@@ -13,6 +13,8 @@ pub struct StatsPanel {
     generation_history: Vec<[f64; 2]>,
     /// History of energy mean values
     energy_history: Vec<[f64; 2]>,
+    /// History of brain complexity mean values
+    brain_history: Vec<[f64; 2]>,
     /// Maximum history length
     max_history: usize,
 }
@@ -23,6 +25,7 @@ impl Default for StatsPanel {
             population_history: Vec::new(),
             generation_history: Vec::new(),
             energy_history: Vec::new(),
+            brain_history: Vec::new(),
             max_history: 500,
         }
     }
@@ -44,12 +47,15 @@ impl StatsPanel {
             .push([time, snapshot.stats.generation_max as f64]);
         self.energy_history
             .push([time, snapshot.stats.energy_mean as f64]);
+        self.brain_history
+            .push([time, snapshot.stats.brain_mean as f64]);
 
         // Trim to max history
         if self.population_history.len() > self.max_history {
             self.population_history.remove(0);
             self.generation_history.remove(0);
             self.energy_history.remove(0);
+            self.brain_history.remove(0);
         }
     }
 
@@ -58,6 +64,7 @@ impl StatsPanel {
         self.population_history.clear();
         self.generation_history.clear();
         self.energy_history.clear();
+        self.brain_history.clear();
     }
 
     /// Render the stats panel
@@ -97,6 +104,14 @@ impl StatsPanel {
                         ui.label("Total Food:");
                         ui.label(format!("{:.0}", snapshot.stats.total_food));
                         ui.end_row();
+
+                        ui.label("Brain Mean:");
+                        ui.label(format!("{:.2}", snapshot.stats.brain_mean));
+                        ui.end_row();
+
+                        ui.label("Brain Max:");
+                        ui.label(format!("{}", snapshot.stats.brain_max));
+                        ui.end_row();
                     });
             });
 
@@ -125,6 +140,21 @@ impl StatsPanel {
                 let line = Line::new(points).color(egui::Color32::LIGHT_BLUE);
 
                 Plot::new("generation_plot")
+                    .height(100.0)
+                    .show_axes(true)
+                    .show(ui, |plot_ui| {
+                        plot_ui.line(line);
+                    });
+            });
+
+        // Brain complexity graph
+        egui::CollapsingHeader::new("Brain Complexity Graph")
+            .default_open(true)
+            .show(ui, |ui| {
+                let points: PlotPoints = self.brain_history.iter().copied().collect();
+                let line = Line::new(points).color(egui::Color32::from_rgb(255, 165, 0)); // Orange
+
+                Plot::new("brain_plot")
                     .height(100.0)
                     .show_axes(true)
                     .show(ui, |plot_ui| {

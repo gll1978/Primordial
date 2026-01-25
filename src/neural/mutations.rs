@@ -78,20 +78,23 @@ impl NeuralNet {
         }
     }
 
-    /// Add a new hidden neuron by splitting an existing connection
+    /// Add a new hidden layer (Python-compatible: adds 2-6 neurons at once)
     pub fn add_neuron(&mut self) {
         let mut rng = rand::thread_rng();
 
+        // Python adds a new layer with 2-6 neurons each time
+        let layer_size = rng.gen_range(2..=6);
+
         if self.hidden_sizes.is_empty() {
-            // Create first hidden layer with 1 neuron
-            self.insert_hidden_layer(0, 1);
+            // Create first hidden layer
+            self.insert_hidden_layer(0, layer_size);
         } else {
-            // Add neuron to random existing hidden layer
-            let layer_idx = rng.gen_range(0..self.hidden_sizes.len());
-            self.grow_hidden_layer(layer_idx);
+            // Add new layer at end (like Python's append)
+            let pos = self.hidden_sizes.len();
+            self.insert_hidden_layer(pos, layer_size);
         }
 
-        self.next_node_id += 1;
+        self.next_node_id += layer_size;
     }
 
     /// Add a connection (strengthen random existing connection)

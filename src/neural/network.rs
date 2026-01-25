@@ -156,9 +156,15 @@ impl NeuralNet {
         outputs
     }
 
-    /// Get total number of neurons (complexity metric)
+    /// Get number of hidden layers (Python-compatible complexity metric)
     #[inline]
     pub fn complexity(&self) -> usize {
+        self.hidden_sizes.len()  // Count layers, not neurons (like Python)
+    }
+
+    /// Get total number of hidden neurons
+    #[inline]
+    pub fn total_hidden_neurons(&self) -> usize {
         self.hidden_sizes.iter().sum::<usize>()
     }
 

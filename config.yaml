@@ -1,39 +1,99 @@
-# PRIMORDIAL V2 Configuration
-# High-performance ecosystem simulator
+# PRIMORDIAL V2 - Fase 2 Week 5 Configuration
+# FIXED: Brain Evolution Enabled (use_instincts: false)
+# Diversity Metrics + Survival Analysis + Export System
 
 world:
-  grid_size: 80
-  food_regen_rate: 0.3
+  grid_size: 80  # Match default
+  food_regen_rate: 0.5
   food_max: 100.0
-  initial_food_density: 0.5
+  initial_food_density: 0.6
 
 organisms:
-  initial_population: 200
-  initial_energy: 80.0
-  reproduction_cost: 25.0
-  reproduction_threshold: 50.0
-  metabolism_base: 0.5
-  food_energy: 25.0
-  move_cost: 0.3
+  initial_population: 200  # Match default
+  initial_energy: 100.0  # Match default (was 80)
+  reproduction_cost: 30.0
+  reproduction_threshold: 60.0
+  metabolism_base: 0.3  # Match default (was 0.5 - too high!)
+  food_energy: 30.0  # Match default (was 20 - too low!)
+  move_cost: 0.2  # Match default (was 0.3)
 
 neural:
   n_inputs: 20
   n_outputs: 10
-  use_instincts: true
+  use_instincts: false  # ← FIXED! Was true, now false for brain evolution
 
 evolution:
-  mutation_rate: 0.05
+  mutation_rate: 0.10  # Increased
   mutation_strength: 0.3
-  add_neuron_rate: 0.03
-  add_connection_rate: 0.05
+  add_neuron_rate: 0.15  # Match debug_brain_no_instincts
+  add_connection_rate: 0.15  # Match debug_brain_no_instincts
 
 safety:
-  max_population: 5000
+  max_population: 5000  # Match default
   max_energy: 500.0
-  max_age: 5000
+  max_age: 5000  # Match default
   max_neurons: 50
 
 logging:
   checkpoint_interval: 500
   stats_interval: 50
   log_level: info
+
+# Fase 2 Week 1: Ecology
+predation:
+  enabled: false  # Disabled for brain drift test
+  damage_multiplier: 0.5
+  size_energy_multiplier: 10.0
+  stored_energy_fraction: 0.3
+  attack_cooldown: 20
+
+seasons:
+  enabled: false  # Disabled for brain drift test
+  season_length: 1000
+
+food:
+  plant_regen_rate: 0.8
+  fruit_regen_rate: 0.3
+  insect_regen_rate: 0.2
+  meat_decay_rate: 0.95
+  max_plant: 80.0
+  max_meat: 50.0
+  max_fruit: 40.0
+  max_insects: 30.0
+
+# Fase 2 Week 2: Terrain & Depletion
+terrain:
+  enabled: false  # Disabled for brain drift test
+  clustered: true
+  barrier: false
+  barrier_vertical: true
+
+depletion:
+  enabled: false  # Disabled for brain drift test
+  organism_threshold: 8
+  food_threshold: 3.0
+  depletion_time: 150
+  recovery_delay: 300
+  recovery_time: 400
+
+# Fase 2 Week 3-4: Sexual Reproduction
+reproduction:
+  enabled: false  # Disabled - use asexual reproduction
+  min_energy: 80.0
+  energy_cost: 35.0
+  offspring_energy: 50.0
+  cooldown: 60
+  inbreeding_fitness_cost: 0.25
+  max_mating_distance: 1
+
+# Fase 2 Week 5: Analysis & Export
+# Note: Diversity metrics are automatically tracked every 100 steps
+# Survival analysis records all deaths automatically
+# Use ExportSystem to export data for external analysis:
+#   - export_organisms_csv: Current population snapshot
+#   - export_phylogeny_csv: Complete lineage tree
+#   - export_phylogeny_newick: Phylogeny in Newick format (for tree viewers)
+#   - export_diversity_csv: Historical diversity metrics
+#   - export_world_json: Full world state snapshot
+#   - export_full_state: All exports in one call
+#   - export_summary: Human-readable summary statistics
