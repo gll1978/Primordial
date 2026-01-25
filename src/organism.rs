@@ -295,7 +295,7 @@ impl Organism {
         // Metabolic cost
         let base_cost = config.organisms.metabolism_base;
         let size_cost = self.size * 0.5;
-        let brain_cost = self.brain.complexity() as f32 * 0.1;
+        let brain_cost = self.brain.complexity() as f32 * 0.01; // Was 0.1 - too high, killed brain evolution
 
         self.energy -= base_cost + size_cost + brain_cost;
 

@@ -161,7 +161,7 @@ impl Default for NeuralConfig {
         Self {
             n_inputs: 20,
             n_outputs: 10,
-            use_instincts: true,
+            use_instincts: false, // Was true - instincts prevent brain evolution
         }
     }
 }
