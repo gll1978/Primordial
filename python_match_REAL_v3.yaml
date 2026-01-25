@@ -1,0 +1,39 @@
+# PRIMORDIAL V2 - REAL match con Python v3
+# Fix: reproduction più facile + tempo per accumulare energia
+
+world:
+  grid_size: 80
+  food_regen_rate: 1.0        # Abbondanza
+  food_max: 100.0
+  initial_food_density: 0.5
+
+organisms:
+  initial_population: 500
+  initial_energy: 100.0
+  reproduction_cost: 30.0      # RIDOTTO: era 50
+  reproduction_threshold: 60.0 # RIDOTTO: era 100
+  metabolism_base: 0.3         # RIDOTTO: era 0.5
+  food_energy: 25.0
+  move_cost: 0.2               # RIDOTTO: era 0.3
+
+neural:
+  n_inputs: 20
+  n_outputs: 10
+  use_instincts: true
+
+evolution:
+  mutation_rate: 0.05
+  mutation_strength: 0.3
+  add_neuron_rate: 0.05        # AUMENTATO: era 0.03
+  add_connection_rate: 0.08    # AUMENTATO: era 0.05
+
+safety:
+  max_population: 8000
+  max_energy: 10000000.0       # 10M - permette accumulo
+  max_age: 500                 # BILANCIATO: tempo per evolvere
+  max_neurons: 50
+
+logging:
+  checkpoint_interval: 500
+  stats_interval: 100
+  log_level: info
