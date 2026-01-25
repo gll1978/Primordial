@@ -1,5 +1,6 @@
 //! World simulation engine - main simulation loop.
 
+use crate::analysis::SurvivalAnalyzer;
 use crate::checkpoint::Checkpoint;
 use crate::config::Config;
 use crate::ecology::depletion::DepletionSystem;
@@ -8,6 +9,7 @@ use crate::ecology::seasons::SeasonalSystem;
 use crate::ecology::terrain::TerrainGrid;
 use crate::evolution::EvolutionEngine;
 use crate::genetics::crossover::CrossoverSystem;
+use crate::genetics::diversity::DiversityHistory;
 use crate::genetics::phylogeny::PhylogeneticTree;
 use crate::genetics::sex::{Sex, SexualReproductionSystem};
 use crate::grid::{FoodGrid, SpatialIndex};
@@ -69,6 +71,10 @@ pub struct World {
     pub sexual_reproduction: SexualReproductionSystem,
     pub crossover_system: CrossoverSystem,
     pub next_lineage_id: u32,
+
+    // Fase 2 Week 5: Diversity and Survival Analysis
+    pub diversity_history: DiversityHistory,
+    pub survival_analyzer: SurvivalAnalyzer,
 }
 
 impl World {
@@ -131,6 +137,10 @@ impl World {
         let sexual_reproduction = SexualReproductionSystem::new();
         let crossover_system = CrossoverSystem::new();
 
+        // Initialize diversity and survival tracking
+        let diversity_history = DiversityHistory::new(100); // Record every 100 steps
+        let survival_analyzer = SurvivalAnalyzer::new();
+
         // Record initial organisms in phylogeny
         for org in &organisms {
             phylogeny.record_birth(
@@ -173,6 +183,8 @@ impl World {
             sexual_reproduction,
             crossover_system,
             next_lineage_id,
+            diversity_history,
+            survival_analyzer,
         };
 
         // Initial spatial index update
@@ -208,6 +220,10 @@ impl World {
         let crossover_system = CrossoverSystem::new();
         let next_lineage_id = checkpoint.organisms.len() as u32;
 
+        // New diversity and survival tracking
+        let diversity_history = DiversityHistory::new(100);
+        let survival_analyzer = SurvivalAnalyzer::new();
+
         let mut world = Self {
             organisms: checkpoint.organisms,
             food_grid: checkpoint.food_grid,
@@ -232,6 +248,8 @@ impl World {
             sexual_reproduction,
             crossover_system,
             next_lineage_id,
+            diversity_history,
+            survival_analyzer,
         };
 
         world.update_spatial_index();
@@ -726,10 +744,14 @@ impl World {
 
     /// Remove dead organisms
     fn remove_dead(&mut self) {
-        // Record deaths in phylogeny before removing
+        // Record deaths in phylogeny and survival analyzer before removing
         for org in &self.organisms {
             if !org.is_alive() {
                 self.phylogeny.record_death(org.id, self.time);
+
+                // Record in survival analyzer (estimate birth time from age)
+                let birth_time = self.time.saturating_sub(org.age as u64);
+                self.survival_analyzer.record_death(org, birth_time, self.time);
             }
         }
 
@@ -917,6 +939,11 @@ impl World {
         if self.time % self.config.logging.stats_interval == 0 {
             self.stats_history.record(self.stats.clone());
             self.lineage_tracker.update(&self.organisms);
+        }
+
+        // Record diversity metrics (every 100 steps to match diversity_history interval)
+        if self.time % self.diversity_history.record_interval == 0 {
+            self.diversity_history.record(self.time, &self.organisms, &self.phylogeny);
         }
     }
 

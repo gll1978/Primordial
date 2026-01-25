@@ -55,6 +55,7 @@
 //! let restored_world = World::from_checkpoint(loaded);
 //! ```
 
+pub mod analysis;
 pub mod checkpoint;
 pub mod config;
 pub mod ecology;
