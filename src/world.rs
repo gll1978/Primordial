@@ -7,6 +7,9 @@ use crate::ecology::predation;
 use crate::ecology::seasons::SeasonalSystem;
 use crate::ecology::terrain::TerrainGrid;
 use crate::evolution::EvolutionEngine;
+use crate::genetics::crossover::CrossoverSystem;
+use crate::genetics::phylogeny::PhylogeneticTree;
+use crate::genetics::sex::{Sex, SexualReproductionSystem};
 use crate::grid::{FoodGrid, SpatialIndex};
 use crate::organism::{Action, DeathCause, Organism};
 use crate::stats::{LineageTracker, Stats, StatsHistory};
@@ -60,6 +63,12 @@ pub struct World {
 
     // Fase 2 Week 2: Depletion system
     pub depletion_system: DepletionSystem,
+
+    // Fase 2 Week 3-4: Genetics
+    pub phylogeny: PhylogeneticTree,
+    pub sexual_reproduction: SexualReproductionSystem,
+    pub crossover_system: CrossoverSystem,
+    pub next_lineage_id: u32,
 }
 
 impl World {
@@ -117,6 +126,29 @@ impl World {
         // Initialize depletion system
         let depletion_system = DepletionSystem::new(grid_size);
 
+        // Initialize genetics systems
+        let mut phylogeny = PhylogeneticTree::new();
+        let sexual_reproduction = SexualReproductionSystem::new();
+        let crossover_system = CrossoverSystem::new();
+
+        // Record initial organisms in phylogeny
+        for org in &organisms {
+            phylogeny.record_birth(
+                org.id,
+                None, // No parents
+                None,
+                0, // Time 0
+                org.brain.complexity(),
+                org.energy,
+                org.size,
+                org.lineage_id,
+                org.generation,
+                org.brain.hash(),
+            );
+        }
+
+        let next_lineage_id = organisms.len() as u32;
+
         let mut world = Self {
             organisms,
             food_grid,
@@ -137,6 +169,10 @@ impl World {
             kills_this_step: 0,
             terrain_grid,
             depletion_system,
+            phylogeny,
+            sexual_reproduction,
+            crossover_system,
+            next_lineage_id,
         };
 
         // Initial spatial index update
@@ -166,6 +202,12 @@ impl World {
         // New depletion system (state not preserved in checkpoint)
         let depletion_system = DepletionSystem::new(grid_size);
 
+        // New genetics systems (state not preserved in checkpoint)
+        let phylogeny = PhylogeneticTree::new();
+        let sexual_reproduction = SexualReproductionSystem::new();
+        let crossover_system = CrossoverSystem::new();
+        let next_lineage_id = checkpoint.organisms.len() as u32;
+
         let mut world = Self {
             organisms: checkpoint.organisms,
             food_grid: checkpoint.food_grid,
@@ -186,6 +228,10 @@ impl World {
             kills_this_step: 0,
             terrain_grid,
             depletion_system,
+            phylogeny,
+            sexual_reproduction,
+            crossover_system,
+            next_lineage_id,
         };
 
         world.update_spatial_index();
@@ -370,8 +416,17 @@ impl World {
         }
     }
 
-    /// Handle reproduction
+    /// Handle reproduction (supports both sexual and asexual)
     fn handle_reproduction(&mut self) {
+        if self.config.reproduction.enabled {
+            self.handle_sexual_reproduction();
+        } else {
+            self.handle_asexual_reproduction();
+        }
+    }
+
+    /// Handle asexual reproduction (original behavior)
+    fn handle_asexual_reproduction(&mut self) {
         let mut offspring = Vec::new();
 
         // Check population limit
@@ -406,6 +461,21 @@ impl World {
             self.next_organism_id += 1;
 
             if let Some(child) = self.organisms[idx].reproduce(child_id, &self.config) {
+                // Record in phylogeny
+                self.phylogeny.record_birth(
+                    child.id,
+                    child.parent1_id,
+                    child.parent2_id,
+                    self.time,
+                    child.brain.complexity(),
+                    child.energy,
+                    child.size,
+                    child.lineage_id,
+                    child.generation,
+                    child.brain.hash(),
+                );
+                self.phylogeny.record_offspring(child.parent1_id, child.parent2_id);
+
                 offspring.push(child);
                 self.births_this_step += 1;
             }
@@ -422,8 +492,247 @@ impl World {
         self.organisms.extend(offspring);
     }
 
+    /// Handle sexual reproduction (two-parent mating)
+    fn handle_sexual_reproduction(&mut self) {
+        // Check population limit
+        let current_pop = self.organisms.iter().filter(|o| o.is_alive()).count();
+        let space_available = self.config.safety.max_population.saturating_sub(current_pop);
+
+        if space_available == 0 {
+            return;
+        }
+
+        // Collect mating candidates (can mate and have energy)
+        let candidates: Vec<usize> = self
+            .organisms
+            .iter()
+            .enumerate()
+            .filter(|(_, o)| o.is_alive() && o.can_mate(&self.config))
+            .map(|(idx, _)| idx)
+            .collect();
+
+        // Find valid pairs first (without borrowing mutably)
+        let mut pairs: Vec<(usize, usize)> = Vec::new();
+        let mut used: std::collections::HashSet<usize> = std::collections::HashSet::new();
+
+        for &idx1 in &candidates {
+            if pairs.len() >= space_available {
+                break;
+            }
+            if used.contains(&idx1) {
+                continue;
+            }
+
+            let org1_x = self.organisms[idx1].x;
+            let org1_y = self.organisms[idx1].y;
+            let org1_sex = self.organisms[idx1].sex;
+
+            // Find a suitable mate nearby
+            let neighbors = self.spatial_index.query_neighbors(org1_x, org1_y, 1);
+
+            for &idx2 in &neighbors {
+                if idx2 >= self.organisms.len() || idx2 == idx1 || used.contains(&idx2) {
+                    continue;
+                }
+
+                let org2 = &self.organisms[idx2];
+
+                // Check if can mate (opposite sex, both have energy, etc.)
+                if !org2.is_alive() || !org2.can_mate(&self.config) {
+                    continue;
+                }
+                if org1_sex == org2.sex {
+                    continue;
+                }
+
+                // Calculate distance
+                let org1_for_dist = &self.organisms[idx1];
+                let distance = org1_for_dist.distance_to(org2);
+                if distance > self.config.reproduction.max_mating_distance {
+                    continue;
+                }
+
+                // Random chance to mate
+                if self.rng.gen::<f32>() > 0.5 {
+                    continue;
+                }
+
+                // Mark as valid pair
+                pairs.push((idx1, idx2));
+                used.insert(idx1);
+                used.insert(idx2);
+                break;
+            }
+        }
+
+        // Now create offspring from pairs
+        let mut offspring = Vec::new();
+        for (idx1, idx2) in pairs {
+            if let Some(child) = self.sexual_reproduce(idx1, idx2) {
+                offspring.push(child);
+                self.births_this_step += 1;
+            }
+        }
+
+        // Update generation max
+        for child in &offspring {
+            if child.generation > self.generation_max {
+                self.generation_max = child.generation;
+            }
+        }
+
+        // Add offspring to population
+        self.organisms.extend(offspring);
+    }
+
+    /// Create offspring from two parents via sexual reproduction
+    fn sexual_reproduce(&mut self, parent1_idx: usize, parent2_idx: usize) -> Option<Organism> {
+        let parent1 = &self.organisms[parent1_idx];
+        let parent2 = &self.organisms[parent2_idx];
+
+        // Check inbreeding
+        let is_inbred = SexualReproductionSystem::is_inbred(parent1.lineage_id, parent2.lineage_id);
+
+        if is_inbred {
+            self.sexual_reproduction.record_mating(true);
+            // 50% chance to fail if inbred
+            if self.rng.gen::<f32>() < 0.5 {
+                self.sexual_reproduction.record_failed_mating();
+                return None;
+            }
+        } else {
+            self.sexual_reproduction.record_mating(false);
+        }
+
+        // Perform crossover
+        let fitness1 = parent1.fitness();
+        let fitness2 = parent2.fitness();
+        let child_brain = self.crossover_system.crossover(
+            &parent1.brain,
+            &parent2.brain,
+            fitness1,
+            fitness2,
+        );
+
+        // Create child diet by averaging parents and mutating
+        let mut child_diet = crate::ecology::food_types::DietSpecialization {
+            plant_efficiency: (parent1.diet.plant_efficiency + parent2.diet.plant_efficiency) / 2.0,
+            meat_efficiency: (parent1.diet.meat_efficiency + parent2.diet.meat_efficiency) / 2.0,
+            fruit_efficiency: (parent1.diet.fruit_efficiency + parent2.diet.fruit_efficiency) / 2.0,
+            insect_efficiency: (parent1.diet.insect_efficiency + parent2.diet.insect_efficiency) / 2.0,
+        };
+        child_diet.mutate(self.config.evolution.mutation_strength);
+
+        // Determine child position (near parent1)
+        let child_x = parent1.x;
+        let child_y = parent1.y;
+
+        // New lineage ID (mixing lineages)
+        let child_lineage = self.next_lineage_id;
+        self.next_lineage_id += 1;
+
+        // Calculate child energy
+        let mut child_energy = self.config.reproduction.offspring_energy;
+
+        // Apply inbreeding penalty
+        if is_inbred {
+            let penalty = SexualReproductionSystem::inbreeding_penalty(&self.config.reproduction);
+            child_energy *= 1.0 - penalty;
+        }
+
+        // Create child
+        let child_id = self.next_organism_id;
+        self.next_organism_id += 1;
+
+        let parent1_id = parent1.id;
+        let parent2_id = parent2.id;
+        let parent1_generation = parent1.generation;
+        let parent2_generation = parent2.generation;
+        let parent1_is_predator = parent1.is_predator;
+        let parent2_is_predator = parent2.is_predator;
+        let parent1_is_aquatic = parent1.is_aquatic;
+        let parent2_is_aquatic = parent2.is_aquatic;
+        let child_size = (parent1.size + parent2.size) / 2.0;
+
+        let mut child = Organism {
+            id: child_id,
+            lineage_id: child_lineage,
+            generation: parent1_generation.max(parent2_generation) + 1,
+            x: child_x,
+            y: child_y,
+            size: child_size,
+            energy: child_energy,
+            health: 100.0,
+            age: 0,
+            brain: child_brain,
+            memory: [0.0; 5],
+            kills: 0,
+            offspring_count: 0,
+            food_eaten: 0,
+            is_predator: parent1_is_predator || parent2_is_predator,
+            signal: 0.0,
+            last_action: None,
+            diet: child_diet,
+            attack_cooldown: 0,
+            cause_of_death: None,
+            is_aquatic: parent1_is_aquatic || parent2_is_aquatic,
+            sex: Sex::random(),
+            parent1_id: Some(parent1_id),
+            parent2_id: Some(parent2_id),
+            mate_cooldown: 0,
+        };
+
+        // Mutate child's brain
+        let mutation_config = crate::neural::MutationConfig {
+            weight_mutation_rate: self.config.evolution.mutation_rate,
+            weight_mutation_strength: self.config.evolution.mutation_strength,
+            add_neuron_rate: self.config.evolution.add_neuron_rate,
+            add_connection_rate: self.config.evolution.add_connection_rate,
+            max_neurons: self.config.safety.max_neurons,
+        };
+        child.brain.mutate(&mutation_config);
+
+        // Small chance to mutate aquatic trait
+        if self.rng.gen::<f32>() < 0.01 {
+            child.is_aquatic = !child.is_aquatic;
+        }
+
+        // Deduct energy from parents and set cooldown
+        self.organisms[parent1_idx].energy -= self.config.reproduction.energy_cost;
+        self.organisms[parent2_idx].energy -= self.config.reproduction.energy_cost;
+        self.organisms[parent1_idx].mate_cooldown = self.config.reproduction.cooldown;
+        self.organisms[parent2_idx].mate_cooldown = self.config.reproduction.cooldown;
+        self.organisms[parent1_idx].offspring_count += 1;
+        self.organisms[parent2_idx].offspring_count += 1;
+
+        // Record in phylogeny
+        self.phylogeny.record_birth(
+            child.id,
+            child.parent1_id,
+            child.parent2_id,
+            self.time,
+            child.brain.complexity(),
+            child.energy,
+            child.size,
+            child.lineage_id,
+            child.generation,
+            child.brain.hash(),
+        );
+        self.phylogeny.record_offspring(child.parent1_id, child.parent2_id);
+        self.sexual_reproduction.record_offspring();
+
+        Some(child)
+    }
+
     /// Remove dead organisms
     fn remove_dead(&mut self) {
+        // Record deaths in phylogeny before removing
+        for org in &self.organisms {
+            if !org.is_alive() {
+                self.phylogeny.record_death(org.id, self.time);
+            }
+        }
+
         let alive_before = self.organisms.len();
         self.organisms.retain(|org| org.is_alive());
         self.deaths_this_step = alive_before - self.organisms.len();

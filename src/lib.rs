@@ -59,6 +59,7 @@ pub mod checkpoint;
 pub mod config;
 pub mod ecology;
 pub mod evolution;
+pub mod genetics;
 pub mod grid;
 pub mod neural;
 pub mod organism;

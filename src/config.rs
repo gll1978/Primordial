@@ -3,6 +3,7 @@
 //! Supports YAML configuration files with sensible defaults.
 
 use crate::ecology::{DepletionConfig, FoodConfig, PredationConfig, SeasonsConfig, TerrainConfig};
+use crate::genetics::sex::SexualReproductionConfig;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -26,6 +27,9 @@ pub struct Config {
     pub terrain: TerrainConfig,
     #[serde(default)]
     pub depletion: DepletionConfig,
+    // Fase 2 Week 3-4: Genetics
+    #[serde(default)]
+    pub reproduction: SexualReproductionConfig,
 }
 
 /// World/environment configuration
@@ -122,6 +126,7 @@ impl Default for Config {
             food: FoodConfig::default(),
             terrain: TerrainConfig::default(),
             depletion: DepletionConfig::default(),
+            reproduction: SexualReproductionConfig::default(),
         }
     }
 }

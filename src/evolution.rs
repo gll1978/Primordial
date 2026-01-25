@@ -2,6 +2,7 @@
 
 use crate::config::Config;
 use crate::ecology::food_types::DietSpecialization;
+use crate::genetics::Sex;
 use crate::neural::{CrossoverStrategy, MutationConfig};
 use crate::organism::Organism;
 use rand::seq::SliceRandom;
@@ -79,7 +80,11 @@ impl EvolutionEngine {
             diet: child_diet,
             attack_cooldown: 0,
             cause_of_death: None,
-            is_aquatic: parent1.is_aquatic || parent2.is_aquatic, // Inherit if either parent is aquatic
+            is_aquatic: parent1.is_aquatic || parent2.is_aquatic,
+            sex: Sex::random(),
+            parent1_id: Some(parent1.id),
+            parent2_id: Some(parent2.id),
+            mate_cooldown: 0,
         }
     }
 

@@ -182,6 +182,33 @@ impl NeuralNet {
         }
         true
     }
+
+    /// Compute a hash of the network weights for genome identification
+    pub fn hash(&self) -> u64 {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
+        let mut hasher = DefaultHasher::new();
+
+        // Hash structure
+        self.n_inputs.hash(&mut hasher);
+        self.n_outputs.hash(&mut hasher);
+        self.hidden_sizes.len().hash(&mut hasher);
+
+        // Hash weights (sample to avoid being too slow)
+        for layer in &self.layers {
+            let weight_count = layer.weights.len();
+            // Hash every 10th weight
+            for (i, &w) in layer.weights.iter().enumerate() {
+                if i % 10 == 0 {
+                    w.to_bits().hash(&mut hasher);
+                }
+            }
+            weight_count.hash(&mut hasher);
+        }
+
+        hasher.finish()
+    }
 }
 
 #[cfg(test)]

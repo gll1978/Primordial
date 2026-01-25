@@ -2,6 +2,7 @@
 
 use crate::config::Config;
 use crate::ecology::food_types::DietSpecialization;
+use crate::genetics::Sex;
 use crate::grid::{FoodGrid, SpatialIndex};
 use crate::neural::NeuralNet;
 use serde::{Deserialize, Serialize};
@@ -97,6 +98,12 @@ pub struct Organism {
 
     // Fase 2 Week 2: Terrain adaptation
     pub is_aquatic: bool,
+
+    // Fase 2 Week 3-4: Sexual reproduction
+    pub sex: Sex,
+    pub parent1_id: Option<OrganismId>,
+    pub parent2_id: Option<OrganismId>,
+    pub mate_cooldown: u32,
 }
 
 impl Organism {
@@ -130,6 +137,10 @@ impl Organism {
             attack_cooldown: 0,
             cause_of_death: None,
             is_aquatic: false, // Organisms start as land-based
+            sex: Sex::random(),
+            parent1_id: None,
+            parent2_id: None,
+            mate_cooldown: 0,
         }
     }
 
@@ -312,6 +323,11 @@ impl Organism {
             self.attack_cooldown -= 1;
         }
 
+        // Update mate cooldown
+        if self.mate_cooldown > 0 {
+            self.mate_cooldown -= 1;
+        }
+
         // Update memory (shift and decay)
         for i in (1..5).rev() {
             self.memory[i] = self.memory[i - 1] * 0.9;
@@ -325,10 +341,26 @@ impl Organism {
         self.health > 0.0 && self.energy > -50.0
     }
 
-    /// Check if organism can reproduce
+    /// Check if organism can reproduce (asexual)
     #[inline]
     pub fn can_reproduce(&self, config: &Config) -> bool {
         self.energy >= config.organisms.reproduction_threshold && self.health > 50.0
+    }
+
+    /// Check if organism can mate (sexual reproduction)
+    #[inline]
+    pub fn can_mate(&self, config: &Config) -> bool {
+        self.energy >= config.reproduction.min_energy
+            && self.health > 50.0
+            && self.mate_cooldown == 0
+    }
+
+    /// Calculate distance to another organism
+    #[inline]
+    pub fn distance_to(&self, other: &Organism) -> u8 {
+        let dx = (self.x as i16 - other.x as i16).unsigned_abs() as u8;
+        let dy = (self.y as i16 - other.y as i16).unsigned_abs() as u8;
+        dx.max(dy)
     }
 
     /// Create offspring from this organism
@@ -364,6 +396,10 @@ impl Organism {
             attack_cooldown: 0,
             cause_of_death: None,
             is_aquatic: self.is_aquatic,
+            sex: Sex::random(),
+            parent1_id: Some(self.id),
+            parent2_id: None, // Asexual reproduction - single parent
+            mate_cooldown: 0,
         };
 
         // Mutate diet slightly
