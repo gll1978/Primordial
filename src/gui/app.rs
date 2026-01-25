@@ -5,9 +5,10 @@ use eframe::egui;
 use crate::config::Config;
 
 use super::commands::{SimCommand, SimSettings};
+use super::logging::LogPanel;
 use super::sim_thread::SimulationHandle;
 use super::snapshot::WorldSnapshot;
-use super::views::{ControlPanel, SettingsPanel, StatsPanel, WorldView};
+use super::views::{BrainView, ControlPanel, SettingsPanel, StatsPanel, WorldView};
 
 /// Main application state
 pub struct PrimordialApp {
@@ -25,6 +26,10 @@ pub struct PrimordialApp {
     stats_panel: StatsPanel,
     /// Settings panel component
     settings_panel: SettingsPanel,
+    /// Brain view component
+    brain_view: BrainView,
+    /// Log panel component
+    log_panel: LogPanel,
     /// Configuration
     config: Config,
 }
@@ -42,7 +47,9 @@ impl PrimordialApp {
             world_view: WorldView::new(),
             control_panel: ControlPanel::new(),
             stats_panel: StatsPanel::new(),
-            settings_panel: SettingsPanel::new(settings),
+            settings_panel: SettingsPanel::new(settings.clone()),
+            brain_view: BrainView::new(),
+            log_panel: LogPanel::new(settings),
             config,
         }
     }
@@ -58,6 +65,7 @@ impl eframe::App for PrimordialApp {
         // Poll for new snapshot
         if let Some(new_snapshot) = self.sim_handle.try_recv_snapshot() {
             self.stats_panel.update(&new_snapshot);
+            self.log_panel.record(&new_snapshot);
             self.snapshot = Some(new_snapshot);
         }
 
@@ -72,6 +80,7 @@ impl eframe::App for PrimordialApp {
             for cmd in commands {
                 if matches!(cmd, SimCommand::Reset) {
                     self.stats_panel.clear();
+                    self.log_panel.reset(self.settings_panel.settings().clone());
                     self.selected_id = None;
                 }
                 self.sim_handle.send(cmd);
@@ -89,15 +98,27 @@ impl eframe::App for PrimordialApp {
                         // Apply & Reset was clicked
                         let settings = self.settings_panel.settings().clone();
                         self.stats_panel.clear();
+                        self.log_panel.reset(settings.clone());
                         self.selected_id = None;
                         self.sim_handle.send(SimCommand::ResetWithSettings(settings));
                     }
 
                     ui.separator();
 
+                    // Logging panel (collapsible)
+                    self.log_panel.show(ui);
+
+                    ui.separator();
+
                     // Stats panel
                     if let Some(ref snapshot) = self.snapshot {
                         self.stats_panel.show(ui, snapshot);
+
+                        // Brain view (when organism is selected)
+                        if let Some(ref detail) = snapshot.selected_organism {
+                            ui.separator();
+                            self.brain_view.show(ui, detail);
+                        }
                     } else {
                         ui.label("Waiting for simulation...");
                     }

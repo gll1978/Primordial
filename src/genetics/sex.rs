@@ -158,13 +158,13 @@ pub struct SexualReproductionConfig {
 impl Default for SexualReproductionConfig {
     fn default() -> Self {
         Self {
-            enabled: true,
-            min_energy: 80.0,
-            energy_cost: 40.0,
-            offspring_energy: 60.0,
-            cooldown: 50,
+            enabled: false, // Default to asexual for simpler dynamics
+            min_energy: 50.0, // Was 80.0 - too high, same as initial energy!
+            energy_cost: 25.0, // Was 40.0 - reduced to match asexual
+            offspring_energy: 50.0, // Was 60.0
+            cooldown: 30, // Was 50
             inbreeding_fitness_cost: 0.3,
-            max_mating_distance: 1,
+            max_mating_distance: 2, // Was 1 - increase chance of finding mate
         }
     }
 }
@@ -291,11 +291,11 @@ mod tests {
             &config
         ));
 
-        // One too low
+        // One too low (below min_energy of 50.0)
         assert!(!SexualReproductionSystem::can_mate(
             Sex::Male,
             Sex::Female,
-            50.0,
+            30.0, // Below min_energy threshold
             100.0,
             0,
             0,
@@ -303,12 +303,12 @@ mod tests {
             &config
         ));
 
-        // Both too low
+        // Both too low (below min_energy of 50.0)
         assert!(!SexualReproductionSystem::can_mate(
             Sex::Male,
             Sex::Female,
-            50.0,
-            50.0,
+            30.0,
+            30.0,
             0,
             0,
             1,

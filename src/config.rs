@@ -135,9 +135,9 @@ impl Default for WorldConfig {
     fn default() -> Self {
         Self {
             grid_size: 80,
-            food_regen_rate: 0.3,
+            food_regen_rate: 0.5, // Was 0.3 - faster food regeneration
             food_max: 100.0,
-            initial_food_density: 0.5,
+            initial_food_density: 0.6, // Was 0.5 - more initial food
         }
     }
 }
@@ -146,12 +146,12 @@ impl Default for OrganismConfig {
     fn default() -> Self {
         Self {
             initial_population: 200,
-            initial_energy: 80.0,
-            reproduction_cost: 25.0,
-            reproduction_threshold: 50.0,
-            metabolism_base: 0.5,
-            food_energy: 25.0,
-            move_cost: 0.3,
+            initial_energy: 100.0,  // Was 80.0 - more starting energy
+            reproduction_cost: 30.0, // Was 25.0
+            reproduction_threshold: 60.0, // Was 50.0
+            metabolism_base: 0.3,   // Was 0.5 - reduced base cost
+            food_energy: 30.0,      // Was 25.0 - more energy from food
+            move_cost: 0.2,         // Was 0.3 - cheaper movement
         }
     }
 }

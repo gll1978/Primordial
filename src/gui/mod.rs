@@ -24,11 +24,13 @@
 
 mod app;
 mod commands;
+mod logging;
 mod sim_thread;
 mod snapshot;
 mod views;
 
 pub use app::{run_gui, PrimordialApp};
 pub use commands::{SimCommand, SimSettings, SimState};
+pub use logging::{LogPanel, SimulationLog};
 pub use sim_thread::SimulationHandle;
 pub use snapshot::{OrganismDetail, OrganismView, WorldSnapshot};
