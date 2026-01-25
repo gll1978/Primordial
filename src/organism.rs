@@ -94,6 +94,9 @@ pub struct Organism {
 
     // Fase 2: Death tracking
     pub cause_of_death: Option<DeathCause>,
+
+    // Fase 2 Week 2: Terrain adaptation
+    pub is_aquatic: bool,
 }
 
 impl Organism {
@@ -126,6 +129,7 @@ impl Organism {
             diet: DietSpecialization::random(),
             attack_cooldown: 0,
             cause_of_death: None,
+            is_aquatic: false, // Organisms start as land-based
         }
     }
 
@@ -359,10 +363,16 @@ impl Organism {
             diet: self.diet.clone(),
             attack_cooldown: 0,
             cause_of_death: None,
+            is_aquatic: self.is_aquatic,
         };
 
         // Mutate diet slightly
         child.diet.mutate(config.evolution.mutation_strength);
+
+        // Small chance to mutate aquatic trait
+        if rand::random::<f32>() < 0.01 {
+            child.is_aquatic = !child.is_aquatic;
+        }
 
         // Mutate child's brain
         let mutation_config = crate::neural::MutationConfig {

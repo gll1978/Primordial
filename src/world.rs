@@ -2,8 +2,10 @@
 
 use crate::checkpoint::Checkpoint;
 use crate::config::Config;
+use crate::ecology::depletion::DepletionSystem;
 use crate::ecology::predation;
 use crate::ecology::seasons::SeasonalSystem;
+use crate::ecology::terrain::TerrainGrid;
 use crate::evolution::EvolutionEngine;
 use crate::grid::{FoodGrid, SpatialIndex};
 use crate::organism::{Action, DeathCause, Organism};
@@ -52,6 +54,12 @@ pub struct World {
 
     // Fase 2: Predation tracking
     pub kills_this_step: usize,
+
+    // Fase 2 Week 2: Terrain system
+    pub terrain_grid: TerrainGrid,
+
+    // Fase 2 Week 2: Depletion system
+    pub depletion_system: DepletionSystem,
 }
 
 impl World {
@@ -96,6 +104,19 @@ impl World {
         // Initialize seasonal system
         let seasonal_system = SeasonalSystem::new(&config.seasons);
 
+        // Initialize terrain grid
+        let mut terrain_grid = TerrainGrid::new(grid_size);
+        if config.terrain.enabled {
+            if config.terrain.barrier {
+                terrain_grid.generate_with_barrier(config.terrain.barrier_vertical);
+            } else if config.terrain.clustered {
+                terrain_grid.generate_clustered(Some(seed));
+            }
+        }
+
+        // Initialize depletion system
+        let depletion_system = DepletionSystem::new(grid_size);
+
         let mut world = Self {
             organisms,
             food_grid,
@@ -114,6 +135,8 @@ impl World {
             deaths_this_step: 0,
             seasonal_system,
             kills_this_step: 0,
+            terrain_grid,
+            depletion_system,
         };
 
         // Initial spatial index update
@@ -129,6 +152,19 @@ impl World {
         let evolution_engine = EvolutionEngine::from_config(&checkpoint.config);
         let mut seasonal_system = SeasonalSystem::new(&checkpoint.config.seasons);
         seasonal_system.update(checkpoint.time);
+
+        // Regenerate terrain (deterministic from seed)
+        let mut terrain_grid = TerrainGrid::new(grid_size);
+        if checkpoint.config.terrain.enabled {
+            if checkpoint.config.terrain.barrier {
+                terrain_grid.generate_with_barrier(checkpoint.config.terrain.barrier_vertical);
+            } else if checkpoint.config.terrain.clustered {
+                terrain_grid.generate_clustered(Some(checkpoint.random_seed));
+            }
+        }
+
+        // New depletion system (state not preserved in checkpoint)
+        let depletion_system = DepletionSystem::new(grid_size);
 
         let mut world = Self {
             organisms: checkpoint.organisms,
@@ -148,6 +184,8 @@ impl World {
             deaths_this_step: 0,
             seasonal_system,
             kills_this_step: 0,
+            terrain_grid,
+            depletion_system,
         };
 
         world.update_spatial_index();
@@ -251,42 +289,29 @@ impl World {
                 continue;
             }
 
+            // Calculate terrain-adjusted move cost
+            let base_cost = self.config.organisms.move_cost;
+            let terrain_cost = if self.config.terrain.enabled {
+                let org = &self.organisms[idx];
+                let terrain = self.terrain_grid.get(org.x, org.y);
+                terrain.movement_cost(org.is_aquatic)
+            } else {
+                1.0
+            };
+            let move_cost = base_cost * terrain_cost;
+
             match action {
                 Action::MoveNorth => {
-                    self.organisms[idx].try_move(
-                        0,
-                        -1,
-                        &self.spatial_index,
-                        self.config.world.grid_size,
-                        self.config.organisms.move_cost,
-                    );
+                    self.try_move_with_terrain(idx, 0, -1, move_cost);
                 }
                 Action::MoveEast => {
-                    self.organisms[idx].try_move(
-                        1,
-                        0,
-                        &self.spatial_index,
-                        self.config.world.grid_size,
-                        self.config.organisms.move_cost,
-                    );
+                    self.try_move_with_terrain(idx, 1, 0, move_cost);
                 }
                 Action::MoveSouth => {
-                    self.organisms[idx].try_move(
-                        0,
-                        1,
-                        &self.spatial_index,
-                        self.config.world.grid_size,
-                        self.config.organisms.move_cost,
-                    );
+                    self.try_move_with_terrain(idx, 0, 1, move_cost);
                 }
                 Action::MoveWest => {
-                    self.organisms[idx].try_move(
-                        -1,
-                        0,
-                        &self.spatial_index,
-                        self.config.world.grid_size,
-                        self.config.organisms.move_cost,
-                    );
+                    self.try_move_with_terrain(idx, -1, 0, move_cost);
                 }
                 Action::Eat => {
                     self.organisms[idx].try_eat(&mut self.food_grid, self.config.organisms.food_energy);
@@ -304,6 +329,36 @@ impl World {
 
             self.organisms[idx].last_action = Some(action);
         }
+    }
+
+    /// Try to move with terrain passability check
+    fn try_move_with_terrain(&mut self, idx: usize, dx: i8, dy: i8, move_cost: f32) {
+        let org = &self.organisms[idx];
+        let new_x = (org.x as i16 + dx as i16) as i16;
+        let new_y = (org.y as i16 + dy as i16) as i16;
+
+        // Bounds check
+        if new_x < 0 || new_x >= self.config.world.grid_size as i16
+            || new_y < 0 || new_y >= self.config.world.grid_size as i16
+        {
+            return;
+        }
+
+        let new_xu = new_x as u8;
+        let new_yu = new_y as u8;
+
+        // Terrain passability check
+        if self.config.terrain.enabled {
+            let target_terrain = self.terrain_grid.get(new_xu, new_yu);
+            if !target_terrain.is_passable(org.is_aquatic) {
+                return; // Can't move there
+            }
+        }
+
+        // Execute move
+        self.organisms[idx].x = new_xu;
+        self.organisms[idx].y = new_yu;
+        self.organisms[idx].energy -= move_cost;
     }
 
     /// Update all organisms (aging, metabolism)
@@ -461,14 +516,58 @@ impl World {
         self.organisms[attacker_idx].attack_cooldown = self.config.predation.attack_cooldown;
     }
 
-    /// Update environment (food regeneration with seasonal multipliers)
+    /// Update environment (food regeneration with seasonal and terrain multipliers)
     fn update_environment(&mut self) {
         // Get seasonal multiplier
         let season_multiplier = self.seasonal_system.food_multiplier();
 
-        // Regular regeneration with seasonal effect
-        self.food_grid
-            .regenerate(self.config.world.food_regen_rate * season_multiplier);
+        // Update depletion states and regenerate food with terrain/depletion modifiers
+        if self.config.terrain.enabled || self.config.depletion.enabled {
+            for y in 0..self.config.world.grid_size {
+                for x in 0..self.config.world.grid_size {
+                    let xu = x as u8;
+                    let yu = y as u8;
+
+                    // Get terrain modifier
+                    let terrain_mult = if self.config.terrain.enabled {
+                        self.terrain_grid.get(xu, yu).food_multiplier()
+                    } else {
+                        1.0
+                    };
+
+                    // Update depletion state
+                    if self.config.depletion.enabled {
+                        let food_amount = self.food_grid.get(xu, yu);
+                        let org_count = self.spatial_index.count_at(xu, yu);
+                        self.depletion_system.update_cell(
+                            xu,
+                            yu,
+                            food_amount,
+                            org_count,
+                            &self.config.depletion,
+                        );
+                    }
+
+                    // Get depletion modifier
+                    let depletion_mult = if self.config.depletion.enabled {
+                        self.depletion_system.regen_multiplier(xu, yu)
+                    } else {
+                        1.0
+                    };
+
+                    // Combined regeneration
+                    let total_mult = season_multiplier * terrain_mult * depletion_mult;
+                    let current = self.food_grid.get(xu, yu);
+                    let new_food = (current + self.config.world.food_regen_rate * total_mult)
+                        .min(self.config.world.food_max);
+                    self.food_grid.set(xu, yu, new_food);
+                }
+            }
+        } else {
+            // Simple regeneration (no terrain/depletion)
+            self.food_grid
+                .regenerate(self.config.world.food_regen_rate * season_multiplier);
+        }
 
         // Random food spawning (also affected by season)
         if self.rng.gen::<f32>() < 0.01 * season_multiplier {

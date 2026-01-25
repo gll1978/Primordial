@@ -79,6 +79,7 @@ impl EvolutionEngine {
             diet: child_diet,
             attack_cooldown: 0,
             cause_of_death: None,
+            is_aquatic: parent1.is_aquatic || parent2.is_aquatic, // Inherit if either parent is aquatic
         }
     }
 
