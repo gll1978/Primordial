@@ -1,6 +1,21 @@
 # PRIMORDIAL V2 - Fase 2 Week 5 Configuration
 # FIXED: Brain Evolution Enabled (use_instincts: false)
 # Diversity Metrics + Survival Analysis + Export System
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# VALIDATION RESULTS (10,000 steps):
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#   BASE (default):        brain_mean=1.05, births=5339  ✅ VALIDATED
+#   PREDATION enabled:     brain_mean=1.04, births=3303  ✅ COMPATIBLE
+#   SEASONS+TERRAIN:       brain_mean=0.05, births=13    ⚠️ INCOMPATIBLE
+#
+# KNOWN LIMITATION: Seasons and terrain features require careful parameter
+# tuning to maintain population viability. Current implementation too harsh
+# for reproduction, blocking evolutionary dynamics (99.8% birth collapse).
+# Future work will optimize these parameters.
+#
+# RECOMMENDATION: Use BASE or PREDATION configs for validation/paper.
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 world:
   grid_size: 80  # Match default
@@ -41,14 +56,14 @@ logging:
 
 # Fase 2 Week 1: Ecology
 predation:
-  enabled: false  # Disabled for brain drift test
+  enabled: false  # ✅ COMPATIBLE with brain evolution (brain=1.04 when enabled)
   damage_multiplier: 0.5
   size_energy_multiplier: 10.0
   stored_energy_fraction: 0.3
   attack_cooldown: 20
 
 seasons:
-  enabled: false  # Disabled for brain drift test
+  enabled: false  # ⚠️ INCOMPATIBLE with brain evolution (causes 99.8% birth collapse)
   season_length: 1000
 
 food:
@@ -63,7 +78,7 @@ food:
 
 # Fase 2 Week 2: Terrain & Depletion
 terrain:
-  enabled: false  # Disabled for brain drift test
+  enabled: false  # ⚠️ INCOMPATIBLE with brain evolution (requires parameter tuning)
   clustered: true
   barrier: false
   barrier_vertical: true
