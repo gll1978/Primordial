@@ -51,13 +51,14 @@ seasons:
   season_length: 1000
 
 food:
-  plant_regen: 0.8
-  fruit_regen: 0.3
-  insect_regen: 0.2
+  plant_regen_rate: 0.8
+  fruit_regen_rate: 0.3
+  insect_regen_rate: 0.2
+  meat_decay_rate: 0.95
   max_plant: 80.0
+  max_meat: 50.0
   max_fruit: 40.0
   max_insects: 30.0
-  meat_decay: 0.05
 
 # Fase 2 Week 2: Terrain & Depletion
 terrain:

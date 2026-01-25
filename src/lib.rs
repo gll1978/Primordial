@@ -67,6 +67,9 @@ pub mod organism;
 pub mod stats;
 pub mod world;
 
+#[cfg(feature = "gui")]
+pub mod gui;
+
 // Re-export main types
 pub use config::Config;
 pub use organism::Organism;
