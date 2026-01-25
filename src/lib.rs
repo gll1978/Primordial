@@ -57,6 +57,7 @@
 
 pub mod checkpoint;
 pub mod config;
+pub mod ecology;
 pub mod evolution;
 pub mod grid;
 pub mod neural;

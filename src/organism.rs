@@ -1,6 +1,7 @@
 //! Organism structure and behavior.
 
 use crate::config::Config;
+use crate::ecology::food_types::DietSpecialization;
 use crate::grid::{FoodGrid, SpatialIndex};
 use crate::neural::NeuralNet;
 use serde::{Deserialize, Serialize};
@@ -43,6 +44,14 @@ pub enum FailReason {
     OutOfBounds,
 }
 
+/// Cause of death tracking
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum DeathCause {
+    Starvation,
+    Predation,
+    OldAge,
+}
+
 /// An organism in the simulation
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Organism {
@@ -76,6 +85,15 @@ pub struct Organism {
 
     // Internal state
     pub last_action: Option<Action>,
+
+    // Fase 2: Diet specialization
+    pub diet: DietSpecialization,
+
+    // Fase 2: Attack cooldown
+    pub attack_cooldown: u32,
+
+    // Fase 2: Death tracking
+    pub cause_of_death: Option<DeathCause>,
 }
 
 impl Organism {
@@ -105,6 +123,9 @@ impl Organism {
             is_predator: false,
             signal: 0.0,
             last_action: None,
+            diet: DietSpecialization::random(),
+            attack_cooldown: 0,
+            cause_of_death: None,
         }
     }
 
@@ -266,15 +287,26 @@ impl Organism {
         // Health decay when starving
         if self.energy < 0.0 {
             self.health -= 5.0;
+            if self.health <= 0.0 && self.cause_of_death.is_none() {
+                self.cause_of_death = Some(DeathCause::Starvation);
+            }
         }
 
         // Age cap
         if self.age >= config.safety.max_age {
             self.health = 0.0;
+            if self.cause_of_death.is_none() {
+                self.cause_of_death = Some(DeathCause::OldAge);
+            }
         }
 
         // Energy cap
         self.energy = self.energy.min(config.safety.max_energy);
+
+        // Update attack cooldown
+        if self.attack_cooldown > 0 {
+            self.attack_cooldown -= 1;
+        }
 
         // Update memory (shift and decay)
         for i in (1..5).rev() {
@@ -324,7 +356,13 @@ impl Organism {
             is_predator: self.is_predator,
             signal: 0.0,
             last_action: None,
+            diet: self.diet.clone(),
+            attack_cooldown: 0,
+            cause_of_death: None,
         };
+
+        // Mutate diet slightly
+        child.diet.mutate(config.evolution.mutation_strength);
 
         // Mutate child's brain
         let mutation_config = crate::neural::MutationConfig {

@@ -1,0 +1,63 @@
+# PRIMORDIAL V2 - Fase 2 Week 1 Test Config
+# Features: Predation, Seasons, Diet Specialization
+
+world:
+  grid_size: 80
+  food_regen_rate: 0.8
+  food_max: 100.0
+  initial_food_density: 0.5
+
+organisms:
+  initial_population: 500
+  initial_energy: 100.0
+  reproduction_cost: 30.0
+  reproduction_threshold: 60.0
+  metabolism_base: 0.3
+  food_energy: 25.0
+  move_cost: 0.2
+
+neural:
+  n_inputs: 20
+  n_outputs: 10
+  use_instincts: true
+
+evolution:
+  mutation_rate: 0.05
+  mutation_strength: 0.3
+  add_neuron_rate: 0.05
+  add_connection_rate: 0.05
+
+safety:
+  max_population: 8000
+  max_energy: 100000.0
+  max_age: 300
+  max_neurons: 50
+
+# Fase 2: Predation
+predation:
+  enabled: true
+  damage_multiplier: 0.5
+  size_energy_multiplier: 10.0
+  stored_energy_fraction: 0.3
+  attack_cooldown: 5
+
+# Fase 2: Seasons
+seasons:
+  enabled: true
+  season_length: 500  # 2000 steps per year
+
+# Fase 2: Food Types (for future integration)
+food:
+  plant_regen_rate: 0.5
+  fruit_regen_rate: 0.2
+  insect_regen_rate: 0.1
+  meat_decay_rate: 0.95
+  max_plant: 50.0
+  max_meat: 100.0
+  max_fruit: 30.0
+  max_insects: 20.0
+
+logging:
+  checkpoint_interval: 500
+  stats_interval: 100
+  log_level: info

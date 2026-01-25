@@ -1,6 +1,7 @@
 //! Evolution mechanics and selection.
 
 use crate::config::Config;
+use crate::ecology::food_types::DietSpecialization;
 use crate::neural::{CrossoverStrategy, MutationConfig};
 use crate::organism::Organism;
 use rand::seq::SliceRandom;
@@ -47,6 +48,15 @@ impl EvolutionEngine {
         // Apply mutation to child
         child_brain.mutate(&self.mutation_config);
 
+        // Create child diet by averaging parents
+        let mut child_diet = DietSpecialization {
+            plant_efficiency: (parent1.diet.plant_efficiency + parent2.diet.plant_efficiency) / 2.0,
+            meat_efficiency: (parent1.diet.meat_efficiency + parent2.diet.meat_efficiency) / 2.0,
+            fruit_efficiency: (parent1.diet.fruit_efficiency + parent2.diet.fruit_efficiency) / 2.0,
+            insect_efficiency: (parent1.diet.insect_efficiency + parent2.diet.insect_efficiency) / 2.0,
+        };
+        child_diet.mutate(self.mutation_config.weight_mutation_strength);
+
         // Create child organism
         Organism {
             id: 0, // Will be assigned later
@@ -66,6 +76,9 @@ impl EvolutionEngine {
             is_predator: parent1.is_predator || parent2.is_predator,
             signal: 0.0,
             last_action: None,
+            diet: child_diet,
+            attack_cooldown: 0,
+            cause_of_death: None,
         }
     }
 

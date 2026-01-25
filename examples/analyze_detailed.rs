@@ -129,26 +129,60 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("  Gen {}: {} ({:.1}%)", gen, count, pct);
     }
 
-    // === 8. Top 5 by Energy ===
+    // === 8. Predation Stats ===
+    let total_kills: u16 = alive.iter().map(|o| o.kills).sum();
+    let predators: Vec<_> = alive.iter().filter(|o| o.is_predator).collect();
+    let top_killer = alive.iter().max_by_key(|o| o.kills);
+
+    println!("\n=== PREDATION ===");
+    println!("Total kills (alive organisms): {}", total_kills);
+    println!("Predators: {} ({:.1}%)", predators.len(), 100.0 * predators.len() as f32 / n as f32);
+    if let Some(killer) = top_killer {
+        println!("Top killer: ID {} with {} kills", killer.id, killer.kills);
+    }
+
+    // === 9. Diet Stats ===
+    let avg_plant_eff: f32 = alive.iter().map(|o| o.diet.plant_efficiency).sum::<f32>() / n as f32;
+    let avg_meat_eff: f32 = alive.iter().map(|o| o.diet.meat_efficiency).sum::<f32>() / n as f32;
+    let avg_fruit_eff: f32 = alive.iter().map(|o| o.diet.fruit_efficiency).sum::<f32>() / n as f32;
+    let avg_insect_eff: f32 = alive.iter().map(|o| o.diet.insect_efficiency).sum::<f32>() / n as f32;
+
+    println!("\n=== DIET SPECIALIZATION (averages) ===");
+    println!("Plant efficiency:  {:.3}", avg_plant_eff);
+    println!("Meat efficiency:   {:.3}", avg_meat_eff);
+    println!("Fruit efficiency:  {:.3}", avg_fruit_eff);
+    println!("Insect efficiency: {:.3}", avg_insect_eff);
+
+    // Dominant diet type
+    let dominant = if avg_meat_eff > avg_plant_eff && avg_meat_eff > avg_fruit_eff {
+        "Carnivore"
+    } else if avg_plant_eff > avg_meat_eff && avg_plant_eff > avg_fruit_eff {
+        "Herbivore"
+    } else {
+        "Omnivore"
+    };
+    println!("Population trend:  {}", dominant);
+
+    // === 10. Top 5 by Energy ===
     let mut by_energy: Vec<_> = alive.iter().collect();
     by_energy.sort_by(|a, b| b.energy.partial_cmp(&a.energy).unwrap());
 
     println!("\n=== TOP 5 BY ENERGY ===");
-    println!("{:<8} {:>10} {:>6} {:>6} {:>8} {:>6}", "ID", "Energy", "Gen", "Age", "Offspring", "Brain");
+    println!("{:<8} {:>10} {:>6} {:>6} {:>8} {:>6} {:>6}", "ID", "Energy", "Gen", "Age", "Offspring", "Brain", "Kills");
     for o in by_energy.iter().take(5) {
-        println!("{:<8} {:>10.1} {:>6} {:>6} {:>8} {:>6}",
-            o.id, o.energy, o.generation, o.age, o.offspring_count, o.brain.complexity());
+        println!("{:<8} {:>10.1} {:>6} {:>6} {:>8} {:>6} {:>6}",
+            o.id, o.energy, o.generation, o.age, o.offspring_count, o.brain.complexity(), o.kills);
     }
 
-    // === 9. Top 5 by Generation ===
+    // === 11. Top 5 by Generation ===
     let mut by_gen: Vec<_> = alive.iter().collect();
     by_gen.sort_by(|a, b| b.generation.cmp(&a.generation));
 
     println!("\n=== TOP 5 BY GENERATION ===");
-    println!("{:<8} {:>10} {:>6} {:>6} {:>8} {:>6}", "ID", "Energy", "Gen", "Age", "Offspring", "Brain");
+    println!("{:<8} {:>10} {:>6} {:>6} {:>8} {:>6} {:>6}", "ID", "Energy", "Gen", "Age", "Offspring", "Brain", "Kills");
     for o in by_gen.iter().take(5) {
-        println!("{:<8} {:>10.1} {:>6} {:>6} {:>8} {:>6}",
-            o.id, o.energy, o.generation, o.age, o.offspring_count, o.brain.complexity());
+        println!("{:<8} {:>10.1} {:>6} {:>6} {:>8} {:>6} {:>6}",
+            o.id, o.energy, o.generation, o.age, o.offspring_count, o.brain.complexity(), o.kills);
     }
 
     // === JSON Output ===

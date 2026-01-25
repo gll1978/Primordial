@@ -2,6 +2,7 @@
 //!
 //! Supports YAML configuration files with sensible defaults.
 
+use crate::ecology::{FoodConfig, PredationConfig, SeasonsConfig};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -14,6 +15,13 @@ pub struct Config {
     pub evolution: EvolutionConfig,
     pub safety: SafetyConfig,
     pub logging: LoggingConfig,
+    // Fase 2 additions
+    #[serde(default)]
+    pub predation: PredationConfig,
+    #[serde(default)]
+    pub seasons: SeasonsConfig,
+    #[serde(default)]
+    pub food: FoodConfig,
 }
 
 /// World/environment configuration
@@ -105,6 +113,9 @@ impl Default for Config {
             evolution: EvolutionConfig::default(),
             safety: SafetyConfig::default(),
             logging: LoggingConfig::default(),
+            predation: PredationConfig::default(),
+            seasons: SeasonsConfig::default(),
+            food: FoodConfig::default(),
         }
     }
 }
