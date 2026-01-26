@@ -90,7 +90,7 @@ impl NeuralNet {
         // Bootstrap useful connections:
         // Input indices:
         //   0-3: food in 4 directions (N, E, S, W)
-        //   4: threat count
+        //   4: threat count (global)
         //   5: mate count
         //   6: energy (normalized)
         //   7: health (normalized)
@@ -99,7 +99,10 @@ impl NeuralNet {
         //   10-14: memory
         //   15: bias (always 1.0)
         //   16: time of day
-        //   17-19: reserved
+        //   17: food at current position
+        //   18: cell occupied
+        //   19: own signal
+        //   20-23: directional threats (N, E, S, W)
 
         // Output indices:
         //   0-3: move directions (N, E, S, W)
@@ -223,8 +226,8 @@ mod tests {
 
     #[test]
     fn test_minimal_network() {
-        let net = NeuralNet::new_minimal(20, 10);
-        assert_eq!(net.n_inputs, 20);
+        let net = NeuralNet::new_minimal(24, 10);
+        assert_eq!(net.n_inputs, 24);
         assert_eq!(net.n_outputs, 10);
         assert_eq!(net.layers.len(), 1);
         assert_eq!(net.complexity(), 0);
@@ -232,8 +235,8 @@ mod tests {
 
     #[test]
     fn test_forward_pass() {
-        let net = NeuralNet::new_minimal(20, 10);
-        let inputs = vec![0.5; 20];
+        let net = NeuralNet::new_minimal(24, 10);
+        let inputs = vec![0.5; 24];
         let outputs = net.forward(&inputs);
 
         assert_eq!(outputs.len(), 10);
@@ -243,10 +246,10 @@ mod tests {
 
     #[test]
     fn test_instinct_network() {
-        let net = NeuralNet::new_with_instincts(20, 10);
+        let net = NeuralNet::new_with_instincts(24, 10);
 
         // Test that food north activates move north
-        let mut inputs = vec![0.0; 20];
+        let mut inputs = vec![0.0; 24];
         inputs[0] = 1.0; // Food to the north
         inputs[15] = 1.0; // Bias
 
@@ -266,13 +269,13 @@ mod tests {
 
     #[test]
     fn test_network_validity() {
-        let net = NeuralNet::new_minimal(20, 10);
+        let net = NeuralNet::new_minimal(24, 10);
         assert!(net.is_valid());
     }
 
     #[test]
     fn test_serialization() {
-        let net = NeuralNet::new_with_instincts(20, 10);
+        let net = NeuralNet::new_with_instincts(24, 10);
         let serialized = bincode::serialize(&net).unwrap();
         let deserialized: NeuralNet = bincode::deserialize(&serialized).unwrap();
 

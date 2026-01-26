@@ -38,10 +38,10 @@ impl Default for PredationConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            damage_multiplier: 0.5,
-            size_energy_multiplier: 10.0,
-            stored_energy_fraction: 0.3,
-            attack_cooldown: 5,
+            damage_multiplier: 15.0,  // Was 0.5 - now ~7 attacks to kill (with size=1.0)
+            size_energy_multiplier: 20.0,  // Was 10.0 - more reward for kills
+            stored_energy_fraction: 0.5,   // Was 0.3 - get more of victim's energy
+            attack_cooldown: 2,            // Was 5 - can attack more often
         }
     }
 }
@@ -91,17 +91,17 @@ mod tests {
     fn test_damage_calculation() {
         let config = PredationConfig::default();
 
-        // Same size
+        // Same size: 2.0 * 15.0 = 30.0
         let damage = calculate_damage(2.0, 2.0, &config);
-        assert!((damage - 1.0).abs() < 0.01); // 2.0 * 0.5 = 1.0
+        assert!((damage - 30.0).abs() < 0.01);
 
-        // Larger attacker
+        // Larger attacker: 3.0 * 15.0 = 45.0
         let damage = calculate_damage(3.0, 1.0, &config);
-        assert!((damage - 1.5).abs() < 0.01); // 3.0 * 0.5 = 1.5
+        assert!((damage - 45.0).abs() < 0.01);
 
-        // Smaller attacker (reduced)
+        // Smaller attacker (reduced): 1.0 * 15.0 * 0.5 = 7.5
         let damage = calculate_damage(1.0, 3.0, &config);
-        assert!((damage - 0.25).abs() < 0.01); // 1.0 * 0.5 * 0.5 = 0.25
+        assert!((damage - 7.5).abs() < 0.01);
     }
 
     #[test]
@@ -109,8 +109,8 @@ mod tests {
         let config = PredationConfig::default();
 
         let gain = calculate_energy_gain(2.0, 50.0, &config);
-        // 2.0 * 10.0 + 50.0 * 0.3 = 20.0 + 15.0 = 35.0
-        assert!((gain - 35.0).abs() < 0.01);
+        // 2.0 * 20.0 + 50.0 * 0.5 = 40.0 + 25.0 = 65.0
+        assert!((gain - 65.0).abs() < 0.01);
     }
 
     #[test]

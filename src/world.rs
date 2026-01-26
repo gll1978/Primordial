@@ -364,18 +364,21 @@ impl World {
             };
             let move_cost = base_cost * terrain_cost;
 
+            // Check for intelligent escape bonus (flee away from threats)
+            let escape_bonus = self.calculate_escape_bonus(idx, &action);
+
             match action {
                 Action::MoveNorth => {
-                    self.try_move_with_terrain(idx, 0, -1, move_cost);
+                    self.try_move_with_terrain(idx, 0, -1 * (1 + escape_bonus), move_cost);
                 }
                 Action::MoveEast => {
-                    self.try_move_with_terrain(idx, 1, 0, move_cost);
+                    self.try_move_with_terrain(idx, 1 + escape_bonus, 0, move_cost);
                 }
                 Action::MoveSouth => {
-                    self.try_move_with_terrain(idx, 0, 1, move_cost);
+                    self.try_move_with_terrain(idx, 0, 1 + escape_bonus, move_cost);
                 }
                 Action::MoveWest => {
-                    self.try_move_with_terrain(idx, -1, 0, move_cost);
+                    self.try_move_with_terrain(idx, -1 - escape_bonus, 0, move_cost);
                 }
                 Action::Eat => {
                     self.organisms[idx].try_eat(&mut self.food_grid, self.config.organisms.food_energy);
@@ -393,6 +396,66 @@ impl World {
 
             self.organisms[idx].last_action = Some(action);
         }
+    }
+
+    /// Calculate escape bonus if organism is fleeing intelligently from threats
+    /// Returns 1 if moving away from the strongest threat direction, 0 otherwise
+    fn calculate_escape_bonus(&self, idx: usize, action: &Action) -> i8 {
+        if !self.config.predation.enabled {
+            return 0;
+        }
+
+        let org = &self.organisms[idx];
+
+        // Find threats in each direction
+        let neighbors = self.spatial_index.query_neighbors(org.x, org.y, 3);
+        let mut threat_north = 0.0f32;
+        let mut threat_east = 0.0f32;
+        let mut threat_south = 0.0f32;
+        let mut threat_west = 0.0f32;
+
+        for &neighbor_idx in &neighbors {
+            if neighbor_idx >= self.organisms.len() || neighbor_idx == idx {
+                continue;
+            }
+            let other = &self.organisms[neighbor_idx];
+            if !other.is_alive() {
+                continue;
+            }
+
+            // Is this organism a threat?
+            let is_threat = other.is_predator || other.size > org.size * 1.2;
+            if !is_threat {
+                continue;
+            }
+
+            let dx = other.x as i16 - org.x as i16;
+            let dy = other.y as i16 - org.y as i16;
+            let dist = (dx.abs().max(dy.abs()) as f32).max(1.0);
+            let intensity = 1.0 / dist;
+
+            if dy < 0 { threat_north += intensity; }
+            if dx > 0 { threat_east += intensity; }
+            if dy > 0 { threat_south += intensity; }
+            if dx < 0 { threat_west += intensity; }
+        }
+
+        // Find the strongest threat direction
+        let max_threat = threat_north.max(threat_east).max(threat_south).max(threat_west);
+        if max_threat < 0.1 {
+            return 0; // No significant threats
+        }
+
+        // Check if moving AWAY from the strongest threat
+        let is_smart_escape = match action {
+            Action::MoveSouth if threat_north >= max_threat * 0.9 => true, // Flee south from north threat
+            Action::MoveWest if threat_east >= max_threat * 0.9 => true,   // Flee west from east threat
+            Action::MoveNorth if threat_south >= max_threat * 0.9 => true, // Flee north from south threat
+            Action::MoveEast if threat_west >= max_threat * 0.9 => true,   // Flee east from west threat
+            _ => false,
+        };
+
+        if is_smart_escape { 1 } else { 0 }
     }
 
     /// Try to move with terrain passability check
@@ -839,8 +902,14 @@ impl World {
             // Become predator (evolve behavior)
             self.organisms[attacker_idx].is_predator = true;
         } else {
-            // Small energy gain from non-lethal attack
-            self.organisms[attacker_idx].energy += damage * 0.1;
+            // Failed attack - increased energy cost to encourage strategic target selection
+            let failure_cost = damage * 0.3; // Was 0.1, now 0.3
+            self.organisms[attacker_idx].energy -= failure_cost;
+
+            // Extra penalty if target is much larger (foolish attack)
+            if target_size > attacker_size * 1.5 {
+                self.organisms[attacker_idx].energy -= 5.0; // "Wounded in the attempt"
+            }
         }
 
         // Set attack cooldown

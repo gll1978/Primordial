@@ -147,34 +147,34 @@ mod tests {
 
     #[test]
     fn test_crossover_fitter_parent() {
-        let parent1 = NeuralNet::new_minimal(20, 10);
-        let parent2 = NeuralNet::new_minimal(20, 10);
+        let parent1 = NeuralNet::new_minimal(24, 10);
+        let parent2 = NeuralNet::new_minimal(24, 10);
 
         let child = parent1.crossover(&parent2, 100.0, 50.0);
 
-        assert_eq!(child.n_inputs, 20);
+        assert_eq!(child.n_inputs, 24);
         assert_eq!(child.n_outputs, 10);
         assert!(child.is_valid());
     }
 
     #[test]
     fn test_crossover_average() {
-        let parent1 = NeuralNet::new_minimal(20, 10);
-        let parent2 = NeuralNet::new_minimal(20, 10);
+        let parent1 = NeuralNet::new_minimal(24, 10);
+        let parent2 = NeuralNet::new_minimal(24, 10);
 
         let child = parent1.crossover_with_strategy(&parent2, 50.0, 50.0, &CrossoverStrategy::Average);
 
         assert!(child.is_valid());
 
         // Check that at least some weights are averaged
-        let inputs = vec![0.5; 20];
+        let inputs = vec![0.5; 24];
         let _outputs = child.forward(&inputs);
     }
 
     #[test]
     fn test_crossover_uniform() {
-        let parent1 = NeuralNet::new_minimal(20, 10);
-        let parent2 = NeuralNet::new_minimal(20, 10);
+        let parent1 = NeuralNet::new_minimal(24, 10);
+        let parent2 = NeuralNet::new_minimal(24, 10);
 
         let child = parent1.crossover_with_strategy(&parent2, 50.0, 50.0, &CrossoverStrategy::Uniform);
 
@@ -183,8 +183,8 @@ mod tests {
 
     #[test]
     fn test_crossover_different_topologies() {
-        let mut parent1 = NeuralNet::new_minimal(20, 10);
-        let parent2 = NeuralNet::new_minimal(20, 10);
+        let mut parent1 = NeuralNet::new_minimal(24, 10);
+        let parent2 = NeuralNet::new_minimal(24, 10);
 
         // Add neurons to parent1
         parent1.add_neuron();

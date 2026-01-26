@@ -32,8 +32,8 @@ fn benchmark_world_step(c: &mut Criterion) {
 }
 
 fn benchmark_neural_forward(c: &mut Criterion) {
-    let net = NeuralNet::new_minimal(20, 10);
-    let inputs = [0.5f32; 20];
+    let net = NeuralNet::new_minimal(24, 10);
+    let inputs = [0.5f32; 24];
 
     c.bench_function("neural_forward_minimal", |b| {
         b.iter(|| {
@@ -41,7 +41,7 @@ fn benchmark_neural_forward(c: &mut Criterion) {
         });
     });
 
-    let mut complex_net = NeuralNet::new_with_instincts(20, 10);
+    let mut complex_net = NeuralNet::new_with_instincts(24, 10);
     for _ in 0..5 {
         complex_net.add_neuron();
     }
@@ -79,7 +79,7 @@ fn benchmark_mutation(c: &mut Criterion) {
     let mutation_config = MutationConfig::default();
 
     c.bench_function("neural_mutation", |b| {
-        let mut net = NeuralNet::new_minimal(20, 10);
+        let mut net = NeuralNet::new_minimal(24, 10);
         b.iter(|| {
             net.mutate(&mutation_config);
         });

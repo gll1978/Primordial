@@ -9,7 +9,7 @@ fn main() {
 
     // Test 100 add_neuron calls
     for i in 0..100 {
-        let mut net = NeuralNet::new_minimal(20, 10);
+        let mut net = NeuralNet::new_minimal(24, 10);
 
         // Add one layer
         net.add_neuron();
@@ -39,7 +39,7 @@ fn main() {
 
     // Test multiple layers
     println!("\n=== Testing multiple layers ===");
-    let mut net = NeuralNet::new_minimal(20, 10);
+    let mut net = NeuralNet::new_minimal(24, 10);
 
     for i in 0..5 {
         net.add_neuron();

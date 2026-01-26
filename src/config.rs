@@ -159,7 +159,7 @@ impl Default for OrganismConfig {
 impl Default for NeuralConfig {
     fn default() -> Self {
         Self {
-            n_inputs: 20,
+            n_inputs: 24, // Expanded: 20 base + 4 directional threat sensors
             n_outputs: 10,
             use_instincts: false, // Was true - instincts prevent brain evolution
         }

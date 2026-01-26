@@ -173,11 +173,11 @@ fn test_neural_network_consistency() {
     for org in &world.organisms {
         if org.is_alive() {
             assert!(org.brain.is_valid(), "Brain should be valid");
-            assert_eq!(org.brain.n_inputs, 20);
+            assert_eq!(org.brain.n_inputs, 24); // 20 base + 4 directional threat sensors
             assert_eq!(org.brain.n_outputs, 10);
 
             // Forward pass should work
-            let inputs = [0.5f32; 20];
+            let inputs = [0.5f32; 24];
             let outputs = org.brain.forward(&inputs);
             assert_eq!(outputs.len(), 10);
             assert!(outputs.iter().all(|&x| x >= -1.0 && x <= 1.0));

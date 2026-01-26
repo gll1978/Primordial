@@ -152,8 +152,8 @@ impl Organism {
         organisms: &[Organism],
         time: u64,
         config: &Config,
-    ) -> [f32; 20] {
-        let mut inputs = [0.0f32; 20];
+    ) -> [f32; 24] {
+        let mut inputs = [0.0f32; 24];
         let sense_range = 3u8;
 
         // Food in 4 directions (normalized)
@@ -163,17 +163,37 @@ impl Organism {
         inputs[2] = food_grid.sense_direction(self.x, self.y, 0, 1, sense_range) / food_scale; // South
         inputs[3] = food_grid.sense_direction(self.x, self.y, -1, 0, sense_range) / food_scale; // West
 
-        // Scan for nearby organisms
+        // Scan for nearby organisms and compute directional threats
         let neighbor_indices = spatial_index.query_neighbors(self.x, self.y, sense_range);
         let mut threats = 0;
         let mut potential_mates = 0;
+
+        // Directional threat accumulators (N, E, S, W)
+        let mut threat_north = 0.0f32;
+        let mut threat_east = 0.0f32;
+        let mut threat_south = 0.0f32;
+        let mut threat_west = 0.0f32;
 
         for &idx in &neighbor_indices {
             if idx < organisms.len() {
                 let other = &organisms[idx];
                 if other.is_alive() && other.id != self.id {
-                    if other.is_predator || other.size > self.size * 1.2 {
+                    let is_threat = other.is_predator || other.size > self.size * 1.2;
+
+                    if is_threat {
                         threats += 1;
+
+                        // Calculate direction and distance to threat
+                        let dx = other.x as i16 - self.x as i16;
+                        let dy = other.y as i16 - self.y as i16;
+                        let dist = ((dx.abs()).max(dy.abs()) as f32).max(1.0);
+                        let threat_intensity = 1.0 / dist; // Closer = more dangerous
+
+                        // Accumulate threat in the appropriate direction
+                        if dy < 0 { threat_north += threat_intensity; } // Threat to the north
+                        if dx > 0 { threat_east += threat_intensity; }  // Threat to the east
+                        if dy > 0 { threat_south += threat_intensity; } // Threat to the south
+                        if dx < 0 { threat_west += threat_intensity; }  // Threat to the west
                     }
                     if other.energy > config.organisms.reproduction_threshold {
                         potential_mates += 1;
@@ -182,7 +202,7 @@ impl Organism {
             }
         }
 
-        inputs[4] = (threats as f32 / 10.0).min(1.0); // Threat level
+        inputs[4] = (threats as f32 / 10.0).min(1.0); // Total threat level (global)
         inputs[5] = (potential_mates as f32 / 10.0).min(1.0); // Mate availability
 
         // Internal state (normalized)
@@ -201,12 +221,18 @@ impl Organism {
         inputs[18] = if spatial_index.is_occupied(self.x, self.y) { 1.0 } else { 0.0 };
         inputs[19] = self.signal; // Own signal
 
+        // NEW: Directional threat sensors (normalized)
+        inputs[20] = (threat_north / 3.0).min(1.0); // Threat from North
+        inputs[21] = (threat_east / 3.0).min(1.0);  // Threat from East
+        inputs[22] = (threat_south / 3.0).min(1.0); // Threat from South
+        inputs[23] = (threat_west / 3.0).min(1.0);  // Threat from West
+
         inputs
     }
 
     /// Process inputs through neural network
     #[inline]
-    pub fn think(&mut self, inputs: &[f32; 20]) -> [f32; 10] {
+    pub fn think(&mut self, inputs: &[f32; 24]) -> [f32; 10] {
         let outputs = self.brain.forward(inputs);
         let mut result = [0.0f32; 10];
         for (i, &val) in outputs.iter().take(10).enumerate() {
@@ -410,12 +436,13 @@ impl Organism {
             child.is_aquatic = !child.is_aquatic;
         }
 
-        // Mutate child's brain
+        // Mutate child's brain (predators get boosted structural mutations)
+        let predator_boost = if self.is_predator { 1.5 } else { 1.0 };
         let mutation_config = crate::neural::MutationConfig {
             weight_mutation_rate: config.evolution.mutation_rate,
             weight_mutation_strength: config.evolution.mutation_strength,
-            add_neuron_rate: config.evolution.add_neuron_rate,
-            add_connection_rate: config.evolution.add_connection_rate,
+            add_neuron_rate: config.evolution.add_neuron_rate * predator_boost,
+            add_connection_rate: config.evolution.add_connection_rate * predator_boost,
             max_neurons: config.safety.max_neurons,
         };
         child.brain.mutate(&mutation_config);
@@ -432,8 +459,9 @@ impl Organism {
         let survival_score = self.age as f32;
         let reproduction_score = self.offspring_count as f32 * 100.0;
         let food_score = self.food_eaten as f32 * 10.0;
+        let predation_score = self.kills as f32 * 50.0; // Reward successful hunting
 
-        survival_score + reproduction_score + food_score
+        survival_score + reproduction_score + food_score + predation_score
     }
 }
 
@@ -467,7 +495,7 @@ mod tests {
 
         let inputs = org.sense(&food_grid, &spatial_index, &organisms, 0, &config);
 
-        assert_eq!(inputs.len(), 20);
+        assert_eq!(inputs.len(), 24); // 20 base + 4 directional threat sensors
         assert!(inputs.iter().all(|&x| x.is_finite()));
     }
 
@@ -476,7 +504,7 @@ mod tests {
         let config = test_config();
         let mut org = Organism::new(1, 1, 40, 40, &config);
 
-        let inputs = [0.5f32; 20];
+        let inputs = [0.5f32; 24]; // 24 inputs including directional threat sensors
         let outputs = org.think(&inputs);
         let action = org.decide_action(&outputs);
 

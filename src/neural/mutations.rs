@@ -216,7 +216,7 @@ mod tests {
 
     #[test]
     fn test_weight_mutation() {
-        let mut net = NeuralNet::new_minimal(20, 10);
+        let mut net = NeuralNet::new_minimal(24, 10);
         let original = net.layers[0].weights.clone();
 
         net.mutate_weights(1.0, 0.1); // 100% mutation rate
@@ -234,7 +234,7 @@ mod tests {
 
     #[test]
     fn test_add_neuron() {
-        let mut net = NeuralNet::new_minimal(20, 10);
+        let mut net = NeuralNet::new_minimal(24, 10);
         assert_eq!(net.complexity(), 0);
 
         net.add_neuron();
@@ -245,7 +245,7 @@ mod tests {
 
     #[test]
     fn test_mutation_preserves_validity() {
-        let mut net = NeuralNet::new_minimal(20, 10);
+        let mut net = NeuralNet::new_minimal(24, 10);
 
         let config = MutationConfig {
             weight_mutation_rate: 0.5,
@@ -263,14 +263,14 @@ mod tests {
         assert!(net.is_valid(), "Network should remain valid after mutations");
 
         // Forward pass should still work
-        let inputs = vec![0.5; 20];
+        let inputs = vec![0.5; 24];
         let outputs = net.forward(&inputs);
         assert!(outputs.iter().all(|&x| x.is_finite()));
     }
 
     #[test]
     fn test_weight_clamping() {
-        let mut net = NeuralNet::new_minimal(20, 10);
+        let mut net = NeuralNet::new_minimal(24, 10);
 
         // Apply extreme mutations
         for _ in 0..1000 {
