@@ -25,6 +25,9 @@ pub enum Action {
     Attack,
     Signal(f32),
     Wait,
+    // Social Communication actions (Cognitive Tasks)
+    SignalDanger,   // Warn nearby organisms of predators
+    SignalFood,     // Signal rich food source found
 }
 
 /// Result of an action attempt
@@ -51,6 +54,31 @@ pub enum DeathCause {
     Starvation,
     Predation,
     OldAge,
+}
+
+/// Cognitive inputs for advanced brain evolution
+/// These inputs require integration over time/space - forcing hidden layer evolution
+#[derive(Debug, Clone, Default)]
+pub struct CognitiveInputs {
+    // Spatial Memory: Depletion in 8 directions (recently eaten cells)
+    pub depletion_n: f32,
+    pub depletion_ne: f32,
+    pub depletion_e: f32,
+    pub depletion_se: f32,
+    pub depletion_s: f32,
+    pub depletion_sw: f32,
+    pub depletion_w: f32,
+    pub depletion_nw: f32,
+
+    // Temporal Prediction
+    pub season_progress: f32,    // 0.0-1.0, where in season cycle
+    pub food_trend: f32,         // -1.0 to +1.0, food rising/falling
+    pub time_to_season: f32,     // 0.0-1.0, time until next season change
+
+    // Social Communication
+    pub signal_danger: f32,      // 1.0 if nearby organism signals danger
+    pub signal_food: f32,        // 1.0 if nearby organism signals food found
+    pub signal_help: f32,        // 1.0 if nearby organism signals help needed
 }
 
 /// An organism in the simulation
@@ -104,6 +132,19 @@ pub struct Organism {
     pub parent1_id: Option<OrganismId>,
     pub parent2_id: Option<OrganismId>,
     pub mate_cooldown: u32,
+
+    // Cognitive Tasks: Social Communication
+    pub social_signal: SocialSignal,
+    pub signal_cooldown: u32,
+}
+
+/// Social signal types for communication between organisms
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
+pub enum SocialSignal {
+    #[default]
+    None,
+    Danger,     // Predator nearby - flee!
+    FoodFound,  // Rich food source - come here!
 }
 
 impl Organism {
@@ -141,10 +182,13 @@ impl Organism {
             parent1_id: None,
             parent2_id: None,
             mate_cooldown: 0,
+            social_signal: SocialSignal::None,
+            signal_cooldown: 0,
         }
     }
 
     /// Sense the environment and return input vector for neural network
+    /// Returns 38 inputs: 24 base + 8 memory + 3 temporal + 3 social
     pub fn sense(
         &self,
         food_grid: &FoodGrid,
@@ -152,8 +196,9 @@ impl Organism {
         organisms: &[Organism],
         time: u64,
         config: &Config,
-    ) -> [f32; 24] {
-        let mut inputs = [0.0f32; 24];
+        cognitive: &CognitiveInputs,
+    ) -> [f32; 38] {
+        let mut inputs = [0.0f32; 38];
         let sense_range = 3u8;
 
         // Food in 4 directions (normalized)
@@ -221,28 +266,52 @@ impl Organism {
         inputs[18] = if spatial_index.is_occupied(self.x, self.y) { 1.0 } else { 0.0 };
         inputs[19] = self.signal; // Own signal
 
-        // NEW: Directional threat sensors (normalized)
+        // Directional threat sensors (normalized)
         inputs[20] = (threat_north / 3.0).min(1.0); // Threat from North
         inputs[21] = (threat_east / 3.0).min(1.0);  // Threat from East
         inputs[22] = (threat_south / 3.0).min(1.0); // Threat from South
         inputs[23] = (threat_west / 3.0).min(1.0);  // Threat from West
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        // COGNITIVE INPUTS (require hidden layers to process effectively)
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        // Spatial Memory: Food depletion in 8 directions (recently eaten = avoid)
+        inputs[24] = cognitive.depletion_n;   // North depleted
+        inputs[25] = cognitive.depletion_ne;  // NE depleted
+        inputs[26] = cognitive.depletion_e;   // East depleted
+        inputs[27] = cognitive.depletion_se;  // SE depleted
+        inputs[28] = cognitive.depletion_s;   // South depleted
+        inputs[29] = cognitive.depletion_sw;  // SW depleted
+        inputs[30] = cognitive.depletion_w;   // West depleted
+        inputs[31] = cognitive.depletion_nw;  // NW depleted
+
+        // Temporal Prediction: Season awareness
+        inputs[32] = cognitive.season_progress;   // Where in season cycle (0-1)
+        inputs[33] = cognitive.food_trend;        // Food rising (+1) or falling (-1)
+        inputs[34] = cognitive.time_to_season;    // Time until season change (0-1)
+
+        // Social Communication: Nearby signals
+        inputs[35] = cognitive.signal_danger;     // Danger signal nearby
+        inputs[36] = cognitive.signal_food;       // Food found signal nearby
+        inputs[37] = cognitive.signal_help;       // Help needed signal nearby
 
         inputs
     }
 
     /// Process inputs through neural network
     #[inline]
-    pub fn think(&mut self, inputs: &[f32; 24]) -> [f32; 10] {
+    pub fn think(&mut self, inputs: &[f32; 38]) -> [f32; 12] {
         let outputs = self.brain.forward(inputs);
-        let mut result = [0.0f32; 10];
-        for (i, &val) in outputs.iter().take(10).enumerate() {
+        let mut result = [0.0f32; 12];
+        for (i, &val) in outputs.iter().take(12).enumerate() {
             result[i] = val;
         }
         result
     }
 
-    /// Decide action based on neural network outputs
-    pub fn decide_action(&self, outputs: &[f32; 10]) -> Action {
+    /// Decide action based on neural network outputs (12 outputs)
+    pub fn decide_action(&self, outputs: &[f32; 12]) -> Action {
         // Find max output index
         let mut max_idx = 0;
         let mut max_val = outputs[0];
@@ -264,6 +333,8 @@ impl Organism {
             6 => Action::Attack,
             7 => Action::Signal(outputs[7]),
             8 => Action::Wait,
+            9 => Action::SignalDanger,   // NEW: Social communication
+            10 => Action::SignalFood,    // NEW: Social communication
             _ => Action::Wait,
         }
     }
@@ -354,6 +425,14 @@ impl Organism {
             self.mate_cooldown -= 1;
         }
 
+        // Update social signal cooldown
+        if self.signal_cooldown > 0 {
+            self.signal_cooldown -= 1;
+            if self.signal_cooldown == 0 {
+                self.social_signal = SocialSignal::None;
+            }
+        }
+
         // Update memory (shift and decay)
         for i in (1..5).rev() {
             self.memory[i] = self.memory[i - 1] * 0.9;
@@ -426,6 +505,8 @@ impl Organism {
             parent1_id: Some(self.id),
             parent2_id: None, // Asexual reproduction - single parent
             mate_cooldown: 0,
+            social_signal: SocialSignal::None,
+            signal_cooldown: 0,
         };
 
         // Mutate diet slightly
@@ -492,10 +573,11 @@ mod tests {
         let food_grid = FoodGrid::new(config.world.grid_size, config.world.food_max);
         let spatial_index = SpatialIndex::new(config.world.grid_size);
         let organisms = vec![org.clone()];
+        let cognitive = CognitiveInputs::default();
 
-        let inputs = org.sense(&food_grid, &spatial_index, &organisms, 0, &config);
+        let inputs = org.sense(&food_grid, &spatial_index, &organisms, 0, &config, &cognitive);
 
-        assert_eq!(inputs.len(), 24); // 20 base + 4 directional threat sensors
+        assert_eq!(inputs.len(), 38); // 24 base + 8 memory + 3 temporal + 3 social
         assert!(inputs.iter().all(|&x| x.is_finite()));
     }
 
@@ -504,7 +586,7 @@ mod tests {
         let config = test_config();
         let mut org = Organism::new(1, 1, 40, 40, &config);
 
-        let inputs = [0.5f32; 24]; // 24 inputs including directional threat sensors
+        let inputs = [0.5f32; 38]; // 38 inputs with cognitive sensors
         let outputs = org.think(&inputs);
         let action = org.decide_action(&outputs);
 
@@ -518,7 +600,9 @@ mod tests {
             | Action::Reproduce
             | Action::Attack
             | Action::Signal(_)
-            | Action::Wait => {}
+            | Action::Wait
+            | Action::SignalDanger
+            | Action::SignalFood => {}
         }
     }
 

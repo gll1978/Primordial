@@ -1,18 +1,22 @@
-# PRIMORDIAL V2 - Optimal Configuration for Brain Evolution
-# VALIDATED: Brain Evolution Working with Predation + Seasons + Terrain
+# PRIMORDIAL V2 - Cognitive Tasks Configuration for Brain Evolution
+# TARGET: Break plateau at 1.0 → reach 2.5-3.5 layers
 #
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# VALIDATION RESULTS (26,000+ steps):
+# COGNITIVE TASKS IMPLEMENTED:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-#   brain_mean: 1.02-1.61 (stable above 1.0)
-#   generation_max: 87 (continuously advancing)
-#   population: stable at 1500 with seasonal cycles
+#   Phase 1: Spatial Memory (8 sensors)
+#     - Track recently eaten cells → avoid revisiting
+#     - Requires hidden layers for state integration
 #
-# KEY FINDINGS:
-#   - Predation + Seasons + Terrain = OPTIMAL for brain growth
-#   - Terrain creates geographic barriers for population isolation
-#   - Seasons create cyclical selective pressure
-#   - Intelligent escape mechanism rewards complex brains
+#   Phase 2: Temporal Prediction (3 sensors)
+#     - Season progress, food trend, time to season change
+#     - Requires pattern integration → 2+ layers
+#
+#   Phase 3: Social Communication (3 sensors + 2 actions)
+#     - Signal Danger/FoodFound to nearby organisms
+#     - Requires theory of mind → 3+ layers
+#
+# EXPECTED: brain_mean 2.5-3.5 (vs 1.0 baseline)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 world:
@@ -31,8 +35,10 @@ organisms:
   move_cost: 0.3  # Increased from 0.2
 
 neural:
-  n_inputs: 24  # 20 base + 4 directional threat sensors
-  n_outputs: 10
+  # 38 inputs: 24 base + 8 spatial memory + 3 temporal + 3 social
+  n_inputs: 38
+  # 12 outputs: 8 move + eat + reproduce + attack + signal + wait + danger + food
+  n_outputs: 12
   use_instincts: false  # Disabled for brain evolution
 
 evolution:

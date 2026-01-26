@@ -1,7 +1,7 @@
 //! Diagnosi: perché la predazione non sta avvenendo?
 
 use primordial::{Config, World};
-use primordial::organism::Action;
+use primordial::organism::{Action, CognitiveInputs};
 
 fn main() {
     println!("=== Diagnosi Predazione ===\n");
@@ -24,6 +24,7 @@ fn main() {
     for step in 1..=5000 {
         // Conta quanti organismi vogliono attaccare
         let alive: Vec<_> = world.organisms.iter().filter(|o| o.is_alive()).collect();
+        let cognitive = CognitiveInputs::default();
 
         for org in &alive {
             let inputs = org.sense(
@@ -32,10 +33,11 @@ fn main() {
                 &world.organisms,
                 world.time,
                 &world.config,
+                &cognitive,
             );
             let outputs = org.brain.forward(&inputs);
-            let mut output_array = [0.0f32; 10];
-            for (i, &val) in outputs.iter().take(10).enumerate() {
+            let mut output_array = [0.0f32; 12];
+            for (i, &val) in outputs.iter().take(12).enumerate() {
                 output_array[i] = val;
             }
             let action = org.decide_action(&output_array);
@@ -50,7 +52,7 @@ fn main() {
             }
         }
 
-        let kills_before = world.kills_this_step;
+        let _kills_before = world.kills_this_step;
         world.step();
         total_kills += world.kills_this_step as u64;
 
@@ -73,8 +75,9 @@ fn main() {
     println!("\n=== Analisi Output Neurali ===");
     let alive: Vec<_> = world.organisms.iter().filter(|o| o.is_alive()).collect();
     let sample_size = alive.len().min(100);
+    let cognitive = CognitiveInputs::default();
 
-    let mut output_sums = [0.0f64; 10];
+    let mut output_sums = [0.0f64; 12];
     let mut attack_chosen = 0;
 
     for org in alive.iter().take(sample_size) {
@@ -84,15 +87,16 @@ fn main() {
             &world.organisms,
             world.time,
             &world.config,
+            &cognitive,
         );
         let outputs = org.brain.forward(&inputs);
 
-        for (i, &val) in outputs.iter().take(10).enumerate() {
+        for (i, &val) in outputs.iter().take(12).enumerate() {
             output_sums[i] += val as f64;
         }
 
         // Trova azione scelta
-        let max_idx = outputs.iter().take(10)
+        let max_idx = outputs.iter().take(12)
             .enumerate()
             .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
             .map(|(i, _)| i)
@@ -102,7 +106,7 @@ fn main() {
     }
 
     println!("Media output per {} organismi campione:", sample_size);
-    let action_names = ["MoveN", "MoveE", "MoveS", "MoveW", "Eat", "Repro", "Attack", "Signal", "Wait", "Res"];
+    let action_names = ["MoveN", "MoveE", "MoveS", "MoveW", "Eat", "Repro", "Attack", "Signal", "Wait", "SigDng", "SigFd", "Res"];
     for (i, &sum) in output_sums.iter().enumerate() {
         let avg = sum / sample_size as f64;
         println!("  {}: {:.4}", action_names[i], avg);

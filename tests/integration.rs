@@ -173,13 +173,15 @@ fn test_neural_network_consistency() {
     for org in &world.organisms {
         if org.is_alive() {
             assert!(org.brain.is_valid(), "Brain should be valid");
-            assert_eq!(org.brain.n_inputs, 24); // 20 base + 4 directional threat sensors
-            assert_eq!(org.brain.n_outputs, 10);
+            // 38 inputs: 24 base + 8 spatial memory + 3 temporal + 3 social
+            assert_eq!(org.brain.n_inputs, 38);
+            // 12 outputs: 8 move + eat + reproduce + attack + signal + wait + signal_danger + signal_food
+            assert_eq!(org.brain.n_outputs, 12);
 
             // Forward pass should work
-            let inputs = [0.5f32; 24];
+            let inputs = [0.5f32; 38];
             let outputs = org.brain.forward(&inputs);
-            assert_eq!(outputs.len(), 10);
+            assert_eq!(outputs.len(), 12);
             assert!(outputs.iter().all(|&x| x >= -1.0 && x <= 1.0));
         }
     }

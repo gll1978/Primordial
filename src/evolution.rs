@@ -85,6 +85,8 @@ impl EvolutionEngine {
             parent1_id: Some(parent1.id),
             parent2_id: Some(parent2.id),
             mate_cooldown: 0,
+            social_signal: crate::organism::SocialSignal::None,
+            signal_cooldown: 0,
         }
     }
 

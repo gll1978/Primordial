@@ -18,6 +18,23 @@ use crate::stats::{LineageTracker, Stats, StatsHistory};
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
 use rayon::prelude::*;
+use std::collections::{HashMap, VecDeque};
+
+/// Food depletion tracking for spatial memory
+#[derive(Clone, Debug)]
+pub struct FoodMemory {
+    pub last_eaten: u64,
+    pub depletion_level: f32,
+}
+
+impl FoodMemory {
+    pub fn new(time: u64) -> Self {
+        Self {
+            last_eaten: time,
+            depletion_level: 0.3, // Initial depletion when first eaten
+        }
+    }
+}
 
 /// The simulation world
 pub struct World {
@@ -75,6 +92,12 @@ pub struct World {
     // Fase 2 Week 5: Diversity and Survival Analysis
     pub diversity_history: DiversityHistory,
     pub survival_analyzer: SurvivalAnalyzer,
+
+    // Cognitive Tasks: Spatial Memory
+    pub food_memory: HashMap<(u8, u8), FoodMemory>,
+
+    // Cognitive Tasks: Temporal Prediction
+    pub food_history: VecDeque<f32>,
 }
 
 impl World {
@@ -185,6 +208,8 @@ impl World {
             next_lineage_id,
             diversity_history,
             survival_analyzer,
+            food_memory: HashMap::new(),
+            food_history: VecDeque::with_capacity(100),
         };
 
         // Initial spatial index update
@@ -250,6 +275,8 @@ impl World {
             next_lineage_id,
             diversity_history,
             survival_analyzer,
+            food_memory: HashMap::new(),
+            food_history: VecDeque::with_capacity(100),
         };
 
         world.update_spatial_index();
@@ -302,6 +329,10 @@ impl World {
         // Phase 7: Update environment (with seasonal multipliers)
         self.update_environment();
 
+        // Phase 7.5: Update cognitive systems (memory & history)
+        self.update_food_memory();
+        self.update_food_history();
+
         // Phase 8: Update spatial index
         self.update_spatial_index();
 
@@ -313,6 +344,11 @@ impl World {
 
     /// Compute actions for all organisms in parallel
     fn compute_actions(&self) -> Vec<(usize, Action)> {
+        // Pre-compute global temporal data (same for all organisms)
+        let season_progress = self.current_season_progress();
+        let food_trend = self.food_availability_trend();
+        let time_to_season = self.steps_to_next_season();
+
         // Collect organism data for parallel processing
         let organism_refs: Vec<_> = self
             .organisms
@@ -325,18 +361,27 @@ impl World {
         organism_refs
             .par_iter()
             .map(|&(idx, org)| {
+                // Build cognitive inputs for this organism
+                let cognitive = self.build_cognitive_inputs(
+                    org,
+                    season_progress,
+                    food_trend,
+                    time_to_season,
+                );
+
                 let inputs = org.sense(
                     &self.food_grid,
                     &self.spatial_index,
                     &self.organisms,
                     self.time,
                     &self.config,
+                    &cognitive,
                 );
 
-                // Clone brain for thread-safe forward pass
+                // Forward pass through neural network
                 let outputs = org.brain.forward(&inputs);
-                let mut output_array = [0.0f32; 10];
-                for (i, &val) in outputs.iter().take(10).enumerate() {
+                let mut output_array = [0.0f32; 12];
+                for (i, &val) in outputs.iter().take(12).enumerate() {
                     output_array[i] = val;
                 }
 
@@ -344,6 +389,83 @@ impl World {
                 (idx, action)
             })
             .collect()
+    }
+
+    /// Build cognitive inputs for an organism (spatial memory, temporal, social)
+    fn build_cognitive_inputs(
+        &self,
+        org: &Organism,
+        season_progress: f32,
+        food_trend: f32,
+        time_to_season: f32,
+    ) -> crate::organism::CognitiveInputs {
+        use crate::organism::{CognitiveInputs, SocialSignal};
+
+        // 8 directions for spatial memory
+        const DIRECTIONS: [(i8, i8); 8] = [
+            (0, -1),  // N
+            (1, -1),  // NE
+            (1, 0),   // E
+            (1, 1),   // SE
+            (0, 1),   // S
+            (-1, 1),  // SW
+            (-1, 0),  // W
+            (-1, -1), // NW
+        ];
+
+        // Calculate depletion in each direction (check 3 cells)
+        let mut depletions = [0.0f32; 8];
+        for (dir_idx, (dx, dy)) in DIRECTIONS.iter().enumerate() {
+            let mut total_depletion = 0.0f32;
+            for dist in 1..=3i8 {
+                let nx = org.x as i16 + (*dx as i16 * dist as i16);
+                let ny = org.y as i16 + (*dy as i16 * dist as i16);
+                if nx >= 0 && nx < self.config.world.grid_size as i16
+                    && ny >= 0 && ny < self.config.world.grid_size as i16
+                {
+                    let depletion = self.get_food_depletion(nx as u8, ny as u8);
+                    // Closer cells contribute more
+                    total_depletion += depletion / dist as f32;
+                }
+            }
+            depletions[dir_idx] = (total_depletion / 3.0).min(1.0);
+        }
+
+        // Scan for social signals from nearby organisms
+        let mut signal_danger = 0.0f32;
+        let mut signal_food = 0.0f32;
+        let signal_help = 0.0f32; // Reserved for future use
+
+        let neighbors = self.spatial_index.query_neighbors(org.x, org.y, 5);
+        for &neighbor_idx in &neighbors {
+            if neighbor_idx < self.organisms.len() && neighbor_idx != org.id as usize {
+                let other = &self.organisms[neighbor_idx];
+                if other.is_alive() {
+                    match other.social_signal {
+                        SocialSignal::Danger => signal_danger = 1.0,
+                        SocialSignal::FoodFound => signal_food = 1.0,
+                        SocialSignal::None => {}
+                    }
+                }
+            }
+        }
+
+        CognitiveInputs {
+            depletion_n: depletions[0],
+            depletion_ne: depletions[1],
+            depletion_e: depletions[2],
+            depletion_se: depletions[3],
+            depletion_s: depletions[4],
+            depletion_sw: depletions[5],
+            depletion_w: depletions[6],
+            depletion_nw: depletions[7],
+            season_progress,
+            food_trend,
+            time_to_season,
+            signal_danger,
+            signal_food,
+            signal_help,
+        }
     }
 
     /// Execute actions sequentially
@@ -381,13 +503,33 @@ impl World {
                     self.try_move_with_terrain(idx, -1 - escape_bonus, 0, move_cost);
                 }
                 Action::Eat => {
-                    self.organisms[idx].try_eat(&mut self.food_grid, self.config.organisms.food_energy);
+                    let org_x = self.organisms[idx].x;
+                    let org_y = self.organisms[idx].y;
+                    let result = self.organisms[idx].try_eat(&mut self.food_grid, self.config.organisms.food_energy);
+                    // Record food consumption for spatial memory
+                    if matches!(result, crate::organism::ActionResult::Success) {
+                        self.record_food_eaten(org_x, org_y);
+                    }
                 }
                 Action::Signal(val) => {
                     self.organisms[idx].signal = val;
                 }
                 Action::Wait => {
                     self.organisms[idx].energy -= 0.5;
+                }
+                Action::SignalDanger => {
+                    // Emit danger signal if not on cooldown
+                    if self.organisms[idx].signal_cooldown == 0 {
+                        self.organisms[idx].social_signal = crate::organism::SocialSignal::Danger;
+                        self.organisms[idx].signal_cooldown = 10; // 10 step cooldown
+                    }
+                }
+                Action::SignalFood => {
+                    // Emit food found signal if not on cooldown
+                    if self.organisms[idx].signal_cooldown == 0 {
+                        self.organisms[idx].social_signal = crate::organism::SocialSignal::FoodFound;
+                        self.organisms[idx].signal_cooldown = 10;
+                    }
                 }
                 Action::Reproduce | Action::Attack => {
                     // Handled separately
@@ -761,6 +903,8 @@ impl World {
             parent1_id: Some(parent1_id),
             parent2_id: Some(parent2_id),
             mate_cooldown: 0,
+            social_signal: crate::organism::SocialSignal::None,
+            signal_cooldown: 0,
         };
 
         // Mutate child's brain
@@ -1047,6 +1191,112 @@ impl World {
     /// Get seed for reproducibility
     pub fn seed(&self) -> u64 {
         self.seed
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // COGNITIVE TASKS: SPATIAL MEMORY
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    /// Record food consumption at a position (for spatial memory)
+    pub fn record_food_eaten(&mut self, x: u8, y: u8) {
+        let pos = (x, y);
+        if let Some(memory) = self.food_memory.get_mut(&pos) {
+            // Increase depletion
+            memory.depletion_level = (memory.depletion_level + 0.3).min(1.0);
+            memory.last_eaten = self.time;
+        } else {
+            // New entry
+            self.food_memory.insert(pos, FoodMemory::new(self.time));
+        }
+    }
+
+    /// Update food memory (decay over time)
+    pub fn update_food_memory(&mut self) {
+        const RECOVERY_TIME: u64 = 200; // Steps to start recovery
+        const DECAY_RATE: f32 = 0.95;   // Decay multiplier per step
+
+        let current_time = self.time;
+
+        // Update all memory entries
+        self.food_memory.retain(|_, memory| {
+            let elapsed = current_time.saturating_sub(memory.last_eaten);
+
+            if elapsed > RECOVERY_TIME {
+                // Gradual recovery
+                memory.depletion_level *= DECAY_RATE;
+
+                // Remove if fully recovered
+                memory.depletion_level > 0.01
+            } else {
+                true
+            }
+        });
+    }
+
+    /// Get food depletion level at a position (0.0 = fresh, 1.0 = depleted)
+    pub fn get_food_depletion(&self, x: u8, y: u8) -> f32 {
+        self.food_memory
+            .get(&(x, y))
+            .map(|m| m.depletion_level)
+            .unwrap_or(0.0)
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // COGNITIVE TASKS: TEMPORAL PREDICTION
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    /// Update food history for trend tracking
+    pub fn update_food_history(&mut self) {
+        self.food_history.push_back(self.food_grid.total_food());
+
+        // Keep last 100 timesteps
+        if self.food_history.len() > 100 {
+            self.food_history.pop_front();
+        }
+    }
+
+    /// Get current season progress (0.0 = start, 1.0 = end of cycle)
+    pub fn current_season_progress(&self) -> f32 {
+        if !self.config.seasons.enabled {
+            return 0.5; // Neutral if seasons disabled
+        }
+        let season_length = self.config.seasons.season_length;
+        if season_length == 0 {
+            return 0.5;
+        }
+        let cycle = self.time % season_length;
+        cycle as f32 / season_length as f32
+    }
+
+    /// Get food availability trend (-1.0 = declining, +1.0 = rising)
+    pub fn food_availability_trend(&self) -> f32 {
+        if self.food_history.len() < 50 {
+            return 0.0;
+        }
+
+        let current = *self.food_history.back().unwrap_or(&0.0);
+        let past = self.food_history[self.food_history.len() - 50];
+
+        if past == 0.0 {
+            return 0.0;
+        }
+
+        let change = (current - past) / past;
+        change.clamp(-1.0, 1.0)
+    }
+
+    /// Get normalized steps to next season change (0.0-1.0)
+    pub fn steps_to_next_season(&self) -> f32 {
+        if !self.config.seasons.enabled {
+            return 0.5;
+        }
+        let season_length = self.config.seasons.season_length;
+        if season_length == 0 {
+            return 0.5;
+        }
+        let cycle = self.time % season_length;
+        let remaining = season_length - cycle;
+        remaining as f32 / season_length as f32
     }
 }
 
