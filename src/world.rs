@@ -505,7 +505,16 @@ impl World {
                 Action::Eat => {
                     let org_x = self.organisms[idx].x;
                     let org_y = self.organisms[idx].y;
-                    let result = self.organisms[idx].try_eat(&mut self.food_grid, self.config.organisms.food_energy);
+
+                    // Check depletion level BEFORE eating
+                    let depletion = self.get_food_depletion(org_x, org_y);
+
+                    // Reduce effective food energy based on depletion
+                    // Depleted cells give 70% less energy (very strong pressure for memory use)
+                    let effective_food_energy = self.config.organisms.food_energy * (1.0 - depletion * 0.70);
+
+                    let result = self.organisms[idx].try_eat(&mut self.food_grid, effective_food_energy);
+
                     // Record food consumption for spatial memory
                     if matches!(result, crate::organism::ActionResult::Success) {
                         self.record_food_eaten(org_x, org_y);
@@ -1201,7 +1210,7 @@ impl World {
     pub fn record_food_eaten(&mut self, x: u8, y: u8) {
         let pos = (x, y);
         if let Some(memory) = self.food_memory.get_mut(&pos) {
-            // Increase depletion
+            // Increase depletion moderately
             memory.depletion_level = (memory.depletion_level + 0.3).min(1.0);
             memory.last_eaten = self.time;
         } else {
@@ -1212,8 +1221,8 @@ impl World {
 
     /// Update food memory (decay over time)
     pub fn update_food_memory(&mut self) {
-        const RECOVERY_TIME: u64 = 200; // Steps to start recovery
-        const DECAY_RATE: f32 = 0.95;   // Decay multiplier per step
+        const RECOVERY_TIME: u64 = 100;  // Steps before recovery starts
+        const DECAY_RATE: f32 = 0.98;    // Slower decay = longer memory matters
 
         let current_time = self.time;
 
@@ -1222,7 +1231,7 @@ impl World {
             let elapsed = current_time.saturating_sub(memory.last_eaten);
 
             if elapsed > RECOVERY_TIME {
-                // Gradual recovery
+                // Gradual recovery (slow)
                 memory.depletion_level *= DECAY_RATE;
 
                 // Remove if fully recovered
