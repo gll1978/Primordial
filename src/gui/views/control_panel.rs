@@ -71,11 +71,13 @@ impl ControlPanel {
     }
 
     /// Get current speed
+    #[allow(dead_code)]
     pub fn speed(&self) -> f32 {
         self.speed
     }
 
     /// Set speed
+    #[allow(dead_code)]
     pub fn set_speed(&mut self, speed: f32) {
         self.speed = speed.clamp(0.1, 10.0);
     }

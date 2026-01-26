@@ -31,6 +31,7 @@ pub struct PrimordialApp {
     /// Log panel component
     log_panel: LogPanel,
     /// Configuration
+    #[allow(dead_code)]
     config: Config,
 }
 

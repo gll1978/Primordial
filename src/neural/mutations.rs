@@ -160,6 +160,7 @@ impl NeuralNet {
     }
 
     /// Grow an existing hidden layer by one neuron
+    #[allow(dead_code)]
     fn grow_hidden_layer(&mut self, layer_idx: usize) {
         let mut rng = rand::thread_rng();
 

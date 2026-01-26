@@ -27,11 +27,13 @@ impl SettingsPanel {
     }
 
     /// Check if settings were modified
+    #[allow(dead_code)]
     pub fn is_modified(&self) -> bool {
         self.modified
     }
 
     /// Reset modified flag
+    #[allow(dead_code)]
     pub fn clear_modified(&mut self) {
         self.modified = false;
     }
