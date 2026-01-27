@@ -141,3 +141,12 @@ behavior_tracking:
   enabled: true
   sample_rate: 10
   max_tracked: 200
+
+# Phase 3: Lifetime Learning (Hebbian)
+learning:
+  enabled: true
+  learning_rate: 0.001
+  decay_rate: 0.001
+  weight_limit: 5.0
+  consolidation_threshold: 0.1
+  working_memory_size: 100

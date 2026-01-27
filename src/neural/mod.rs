@@ -9,7 +9,10 @@
 mod network;
 mod mutations;
 mod crossover;
+pub mod hebbian;
+pub mod memory_consolidation;
 
 pub use network::{NeuralNet, Layer};
 pub use mutations::MutationConfig;
 pub use crossover::CrossoverStrategy;
+pub use hebbian::{HebbianState, LearningConfig};

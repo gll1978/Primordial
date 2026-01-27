@@ -95,6 +95,10 @@ impl EvolutionEngine {
             coop_successes: 0,
             coop_failures: 0,
             last_coop_time: 0,
+            last_reward: 0.0,
+            total_lifetime_reward: 0.0,
+            successful_forages: 0,
+            failed_forages: 0,
         }
     }
 

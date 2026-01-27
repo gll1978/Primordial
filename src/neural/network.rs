@@ -3,6 +3,7 @@
 use ndarray::{Array1, Array2};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
+use super::hebbian::HebbianState;
 
 /// A single layer in the neural network
 #[derive(Clone, Debug)]
@@ -63,6 +64,9 @@ pub struct NeuralNet {
     pub layers: Vec<Layer>,
     /// Next available node ID (for NEAT tracking)
     pub next_node_id: usize,
+    /// Hebbian learning state (None if learning disabled)
+    #[serde(skip)]
+    pub hebbian_state: Option<HebbianState>,
 }
 
 impl NeuralNet {
@@ -80,6 +84,7 @@ impl NeuralNet {
             hidden_sizes: Vec::new(),
             layers: vec![Layer { weights, biases }],
             next_node_id: n_inputs + n_outputs,
+            hebbian_state: None,
         }
     }
 
@@ -218,6 +223,75 @@ impl NeuralNet {
 
         hasher.finish()
     }
+
+    /// Enable Hebbian learning on this network
+    pub fn enable_learning(&mut self, learning_rate: f32) {
+        self.hebbian_state = Some(HebbianState::new(learning_rate, 0.001, 5.0));
+    }
+
+    /// Forward pass that records activations for Hebbian learning
+    pub fn forward_with_learning(&mut self, inputs: &[f32], time: u64) -> Vec<f32> {
+        debug_assert_eq!(inputs.len(), self.n_inputs);
+
+        let mut activation = Array1::from_vec(inputs.to_vec());
+
+        for (layer_idx, layer) in self.layers.iter().enumerate() {
+            let pre = activation.to_vec();
+            activation = activation.dot(&layer.weights) + &layer.biases;
+            activation.mapv_inplace(|x| x.tanh());
+            let post = activation.to_vec();
+
+            if let Some(ref mut state) = self.hebbian_state {
+                state.record_activation(layer_idx, pre, post, time);
+            }
+        }
+
+        activation.to_vec()
+    }
+
+    /// Apply Hebbian learning update with reward signal
+    pub fn learn(&mut self, reward: f32) {
+        // Take hebbian_state out temporarily to avoid borrow conflict
+        let mut state = match self.hebbian_state.take() {
+            Some(s) => s,
+            None => return,
+        };
+
+        for (layer_idx, layer) in self.layers.iter_mut().enumerate() {
+            state.apply_update(&mut layer.weights, reward, layer_idx);
+        }
+
+        // Clear remaining traces
+        state.clear_traces();
+
+        // Put state back
+        self.hebbian_state = Some(state);
+    }
+
+    /// Check if learning is enabled
+    #[inline]
+    pub fn has_learning(&self) -> bool {
+        self.hebbian_state.is_some()
+    }
+
+    /// Get learning statistics
+    pub fn learning_stats(&self) -> Option<LearningStats> {
+        self.hebbian_state.as_ref().map(|s| LearningStats {
+            update_count: s.update_count,
+            successful_updates: s.successful_updates,
+            efficiency: s.learning_efficiency(),
+            learning_rate: s.learning_rate,
+        })
+    }
+}
+
+/// Statistics about Hebbian learning
+#[derive(Clone, Debug)]
+pub struct LearningStats {
+    pub update_count: u64,
+    pub successful_updates: u64,
+    pub efficiency: f32,
+    pub learning_rate: f32,
 }
 
 #[cfg(test)]

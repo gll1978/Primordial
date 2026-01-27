@@ -206,6 +206,12 @@ pub struct Organism {
     pub coop_successes: u32,               // Lifetime cooperative hunt successes
     pub coop_failures: u32,                // Lifetime cooperative hunt failures
     pub last_coop_time: u64,               // Time of last cooperation
+
+    // Phase 3: Lifetime Learning (Hebbian)
+    pub last_reward: f32,
+    pub total_lifetime_reward: f32,
+    pub successful_forages: u32,
+    pub failed_forages: u32,
 }
 
 /// Social signal types for communication between organisms
@@ -262,6 +268,10 @@ impl Organism {
             coop_successes: 0,
             coop_failures: 0,
             last_coop_time: 0,
+            last_reward: 0.0,
+            total_lifetime_reward: 0.0,
+            successful_forages: 0,
+            failed_forages: 0,
         }
     }
 
@@ -657,24 +667,34 @@ impl Organism {
         // Prevents runaway growth while rewarding moderate complexity
         // Sweet spot: 5-7 layers
         let brain_complexity = self.brain.complexity();
+        let has_learning = self.brain.has_learning();
+
         let brain_bonus = if brain_complexity == 0 {
-            0.0  // No brain: no bonus
-        } else if brain_complexity <= 7 {
-            // BENEFIT ZONE: -0.03 per layer (max -0.21)
-            0.03 * brain_complexity as f32
-        } else if brain_complexity <= 10 {
-            // DIMINISHING ZONE: -0.21 + -0.01 per layer (max -0.24)
-            0.21 + 0.01 * (brain_complexity - 7) as f32
-        } else if brain_complexity <= 12 {
-            // NEUTRAL ZONE: capped at -0.24
-            0.24
+            0.0
+        } else if !has_learning {
+            // NO LEARNING: existing penalty system
+            if brain_complexity <= 7 {
+                0.03 * brain_complexity as f32
+            } else if brain_complexity <= 10 {
+                0.21 + 0.01 * (brain_complexity - 7) as f32
+            } else if brain_complexity <= 12 {
+                0.24
+            } else {
+                (0.24 - 0.05 * (brain_complexity - 12) as f32).max(-0.30)
+            }
         } else {
-            // AGGRESSIVE PENALTY ZONE: 0.05 penalty per extra layer
-            // 13 layers: 0.19
-            // 15 layers: 0.09
-            // 17 layers: -0.01 (penalty starts!)
-            // 20 layers: -0.16 (strong penalty)
-            (0.24 - 0.05 * (brain_complexity - 12) as f32).max(-0.30)
+            // WITH LEARNING: reduced bonus, earlier penalty
+            // Learning provides adaptation, not raw size
+            if brain_complexity <= 5 {
+                0.02 * brain_complexity as f32  // Max 0.10
+            } else if brain_complexity <= 8 {
+                0.10 + 0.005 * (brain_complexity - 5) as f32  // Max 0.115
+            } else if brain_complexity <= 10 {
+                0.115  // Capped
+            } else {
+                // Penalty: 11→0.075, 13→-0.005, 15→-0.085
+                (0.115 - 0.04 * (brain_complexity - 10) as f32).max(-0.30)
+            }
         };
 
         // Ensure minimum metabolism of 0.08 to maintain population stability
@@ -799,6 +819,10 @@ impl Organism {
             coop_successes: 0,
             coop_failures: 0,
             last_coop_time: 0,
+            last_reward: 0.0,
+            total_lifetime_reward: 0.0,
+            successful_forages: 0,
+            failed_forages: 0,
         };
 
         // Mutate diet slightly
@@ -825,6 +849,18 @@ impl Organism {
         child.x = (self.x + 1).min(grid_size - 1);
 
         Some(child)
+    }
+
+    /// Apply Hebbian learning update with reward signal
+    pub fn apply_learning_update(&mut self, reward: f32) {
+        self.last_reward = reward;
+        self.total_lifetime_reward += reward;
+        if reward > 0.0 {
+            self.successful_forages += 1;
+        } else if reward < 0.0 {
+            self.failed_forages += 1;
+        }
+        self.brain.learn(reward);
     }
 
     /// Get fitness score (for selection/crossover)

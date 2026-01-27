@@ -46,6 +46,10 @@ pub struct SimSettings {
     pub seasons_enabled: bool,
     /// Enable terrain
     pub terrain_enabled: bool,
+    /// Enable lifetime learning (Hebbian)
+    pub learning_enabled: bool,
+    /// Learning rate for Hebbian updates
+    pub learning_rate: f32,
 }
 
 impl Default for SimSettings {
@@ -62,6 +66,8 @@ impl Default for SimSettings {
             predation_enabled: true,
             seasons_enabled: true,
             terrain_enabled: true,
+            learning_enabled: false,
+            learning_rate: 0.001,
         }
     }
 }
@@ -81,6 +87,8 @@ impl SimSettings {
             predation_enabled: config.predation.enabled,
             seasons_enabled: config.seasons.enabled,
             terrain_enabled: config.terrain.enabled,
+            learning_enabled: config.learning.enabled,
+            learning_rate: config.learning.learning_rate,
         }
     }
 
@@ -96,6 +104,8 @@ impl SimSettings {
         config.predation.enabled = self.predation_enabled;
         config.seasons.enabled = self.seasons_enabled;
         config.terrain.enabled = self.terrain_enabled;
+        config.learning.enabled = self.learning_enabled;
+        config.learning.learning_rate = self.learning_rate;
     }
 }
 

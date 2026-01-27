@@ -151,7 +151,10 @@ impl World {
             let y = rng.gen_range(0..grid_size as u8);
             let lineage_id = lineage_tracker.register_lineage(0);
 
-            let org = Organism::new(next_organism_id, lineage_id, x, y, &config);
+            let mut org = Organism::new(next_organism_id, lineage_id, x, y, &config);
+            if config.learning.enabled {
+                org.brain.enable_learning(config.learning.learning_rate);
+            }
             organisms.push(org);
             next_organism_id += 1;
         }
@@ -398,6 +401,8 @@ impl World {
         let actions = self.compute_actions();
 
         // Phase 2: Execute actions (sequential to avoid conflicts)
+        // Save energy before actions for reward calculation
+        let energy_before: Vec<f32> = self.organisms.iter().map(|o| o.energy).collect();
         self.execute_actions(&actions);
 
         // Phase 3: Handle predation (Attack actions)
@@ -408,6 +413,11 @@ impl World {
 
         // Phase 4: Update organisms (aging, metabolism)
         self.update_organisms();
+
+        // Phase 4.5: Apply lifetime learning (Hebbian)
+        if self.config.learning.enabled {
+            self.apply_learning_phase(&actions, &energy_before);
+        }
 
         // Phase 5: Handle reproduction
         self.handle_reproduction();
@@ -482,7 +492,7 @@ impl World {
     }
 
     /// Compute actions for all organisms in parallel
-    fn compute_actions(&self) -> Vec<(usize, Action)> {
+    fn compute_actions(&self) -> Vec<(usize, Action, Vec<f32>)> {
         // Pre-compute global temporal data (same for all organisms)
         let season_progress = self.current_season_progress();
         let food_trend = self.food_availability_trend();
@@ -525,7 +535,7 @@ impl World {
                 }
 
                 let action = org.decide_action(&output_array);
-                (idx, action)
+                (idx, action, inputs.to_vec())
             })
             .collect()
     }
@@ -847,7 +857,7 @@ impl World {
     }
 
     /// Handle large prey attacks
-    pub fn handle_large_prey_attacks(&mut self, actions: &[(usize, Action)]) {
+    pub fn handle_large_prey_attacks(&mut self, actions: &[(usize, Action, Vec<f32>)]) {
         if !self.config.large_prey.enabled || self.large_prey.is_empty() {
             return;
         }
@@ -855,7 +865,8 @@ impl World {
         // Group attackers by prey
         let mut attacks_by_prey: HashMap<u64, Vec<usize>> = HashMap::new();
 
-        for &(idx, action) in actions {
+        for (idx, action, _) in actions {
+            let (idx, action) = (*idx, *action);
             if action != Action::AttackLargePrey {
                 continue;
             }
@@ -1038,8 +1049,10 @@ impl World {
     }
 
     /// Execute actions sequentially
-    fn execute_actions(&mut self, actions: &[(usize, Action)]) {
-        for &(idx, action) in actions {
+    fn execute_actions(&mut self, actions: &[(usize, Action, Vec<f32>)]) {
+        for (idx, action, _inputs) in actions {
+            let idx = *idx;
+            let action = *action;
             if idx >= self.organisms.len() || !self.organisms[idx].is_alive() {
                 continue;
             }
@@ -1389,7 +1402,11 @@ impl World {
             let child_id = self.next_organism_id;
             self.next_organism_id += 1;
 
-            if let Some(child) = self.organisms[idx].reproduce(child_id, &self.config) {
+            if let Some(mut child) = self.organisms[idx].reproduce(child_id, &self.config) {
+                // Enable learning if configured
+                if self.config.learning.enabled {
+                    child.brain.enable_learning(self.config.learning.learning_rate);
+                }
                 // Record in phylogeny
                 self.phylogeny.record_birth(
                     child.id,
@@ -1497,7 +1514,10 @@ impl World {
         // Now create offspring from pairs
         let mut offspring = Vec::new();
         for (idx1, idx2) in pairs {
-            if let Some(child) = self.sexual_reproduce(idx1, idx2) {
+            if let Some(mut child) = self.sexual_reproduce(idx1, idx2) {
+                if self.config.learning.enabled {
+                    child.brain.enable_learning(self.config.learning.learning_rate);
+                }
                 offspring.push(child);
                 self.births_this_step += 1;
             }
@@ -1619,6 +1639,10 @@ impl World {
             coop_successes: 0,
             coop_failures: 0,
             last_coop_time: 0,
+            last_reward: 0.0,
+            total_lifetime_reward: 0.0,
+            successful_forages: 0,
+            failed_forages: 0,
         };
 
         // Mutate child's brain
@@ -1687,7 +1711,7 @@ impl World {
     }
 
     /// Handle predation (Attack actions)
-    fn handle_predation(&mut self, actions: &[(usize, Action)]) {
+    fn handle_predation(&mut self, actions: &[(usize, Action, Vec<f32>)]) {
         if !self.config.predation.enabled {
             return;
         }
@@ -1695,7 +1719,8 @@ impl World {
         // Collect attack intentions
         let mut attacks: Vec<(usize, usize)> = Vec::new(); // (attacker_idx, target_idx)
 
-        for &(idx, action) in actions {
+        for (idx, action, _) in actions {
+            let (idx, action) = (*idx, *action);
             if action == Action::Attack {
                 if idx >= self.organisms.len() || !self.organisms[idx].is_alive() {
                     continue;
@@ -2087,6 +2112,50 @@ impl World {
         let cycle = self.time % season_length;
         let remaining = season_length - cycle;
         remaining as f32 / season_length as f32
+    }
+
+    /// Calculate reward signal for an organism based on energy change
+    fn calculate_reward(&self, org: &Organism, energy_before: f32) -> f32 {
+        let energy_delta = org.energy - energy_before;
+
+        // Conservative reward: small signal to avoid weight destabilization
+        // Scale down heavily and clamp tight
+        (energy_delta / 30.0).clamp(-0.5, 0.5)
+    }
+
+    /// Apply Hebbian learning phase: replay inputs, compute reward, update weights
+    fn apply_learning_phase(
+        &mut self,
+        actions: &[(usize, Action, Vec<f32>)],
+        energy_before: &[f32],
+    ) {
+        let time = self.time;
+
+        for (idx, _action, inputs) in actions {
+            let idx = *idx;
+            if idx >= self.organisms.len() || !self.organisms[idx].is_alive() {
+                continue;
+            }
+            if self.organisms[idx].brain.hebbian_state.is_none() {
+                continue;
+            }
+
+            let eb = if idx < energy_before.len() {
+                energy_before[idx]
+            } else {
+                self.organisms[idx].energy
+            };
+
+            // Replay forward pass with learning (records activations)
+            let org = &mut self.organisms[idx];
+            org.brain.forward_with_learning(inputs, time);
+
+            // Calculate reward from energy change
+            let reward = self.calculate_reward(&self.organisms[idx], eb);
+
+            // Apply learning update
+            self.organisms[idx].apply_learning_update(reward);
+        }
     }
 }
 

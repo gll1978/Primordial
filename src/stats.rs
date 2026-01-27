@@ -33,6 +33,12 @@ pub struct Stats {
     pub deaths: usize,
     /// Steps per second (performance)
     pub steps_per_second: f32,
+    /// Learning: mean efficiency across organisms with learning enabled
+    pub learning_efficiency: f32,
+    /// Learning: total updates across all organisms
+    pub learning_updates: u64,
+    /// Learning: mean lifetime reward
+    pub learning_reward_mean: f32,
 }
 
 impl Stats {
@@ -77,6 +83,25 @@ impl Stats {
             let lineages: std::collections::HashSet<_> =
                 alive.iter().map(|o| o.lineage_id).collect();
             self.lineage_count = lineages.len();
+
+            // Learning stats
+            let mut eff_sum = 0.0f32;
+            let mut eff_count = 0usize;
+            let mut total_updates = 0u64;
+            let mut reward_sum = 0.0f32;
+
+            for org in &alive {
+                if let Some(stats) = org.brain.learning_stats() {
+                    eff_sum += stats.efficiency;
+                    eff_count += 1;
+                    total_updates += stats.update_count;
+                }
+                reward_sum += org.total_lifetime_reward;
+            }
+
+            self.learning_efficiency = if eff_count > 0 { eff_sum / eff_count as f32 } else { 0.0 };
+            self.learning_updates = total_updates;
+            self.learning_reward_mean = reward_sum / alive.len() as f32;
         }
 
         self.total_food = total_food;
@@ -96,15 +121,30 @@ impl Stats {
 
     /// Format stats as a one-line summary
     pub fn summary(&self) -> String {
-        format!(
-            "T:{:6} | Pop:{:5} | Gen:{:3} | Brain:{:.1} | Energy:{:.0} | Food:{:.0}",
-            self.time,
-            self.population,
-            self.generation_max,
-            self.brain_mean,
-            self.energy_mean,
-            self.total_food
-        )
+        if self.learning_updates > 0 {
+            format!(
+                "T:{:6} | Pop:{:5} | Gen:{:3} | Brain:{:.1} | Energy:{:.0} | Food:{:.0} | Lrn:{:.2} Upd:{} Rwd:{:.1}",
+                self.time,
+                self.population,
+                self.generation_max,
+                self.brain_mean,
+                self.energy_mean,
+                self.total_food,
+                self.learning_efficiency,
+                self.learning_updates,
+                self.learning_reward_mean,
+            )
+        } else {
+            format!(
+                "T:{:6} | Pop:{:5} | Gen:{:3} | Brain:{:.1} | Energy:{:.0} | Food:{:.0}",
+                self.time,
+                self.population,
+                self.generation_max,
+                self.brain_mean,
+                self.energy_mean,
+                self.total_food
+            )
+        }
     }
 }
 

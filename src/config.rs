@@ -4,6 +4,7 @@
 
 use crate::ecology::{DepletionConfig, EnvironmentConfig, FoodConfig, LargePreyConfig, PredationConfig, SeasonsConfig, TerrainConfig};
 use crate::genetics::sex::SexualReproductionConfig;
+use crate::neural::LearningConfig;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -41,6 +42,9 @@ pub struct Config {
     // Phase 2: Procedural Environments
     #[serde(default)]
     pub procedural_environment: EnvironmentConfig,
+    // Phase 3: Lifetime Learning (Hebbian)
+    #[serde(default)]
+    pub learning: LearningConfig,
 }
 
 /// World/environment configuration
@@ -186,6 +190,7 @@ impl Default for Config {
             food_patches: FoodPatchesConfig::default(),
             behavior_tracking: BehaviorTrackingConfig::default(),
             procedural_environment: EnvironmentConfig::default(),
+            learning: LearningConfig::default(),
         }
     }
 }

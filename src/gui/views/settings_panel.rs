@@ -168,6 +168,28 @@ impl SettingsPanel {
                             self.modified = true;
                         }
                         ui.end_row();
+
+                        ui.separator();
+                        ui.separator();
+                        ui.end_row();
+
+                        // Learning settings
+                        ui.label("Learning:");
+                        if ui.checkbox(&mut self.settings.learning_enabled, "").changed() {
+                            self.modified = true;
+                        }
+                        ui.end_row();
+
+                        ui.label("Learning Rate:");
+                        if ui.add(egui::DragValue::new(&mut self.settings.learning_rate)
+                            .clamp_range(0.0001..=0.1)
+                            .speed(0.0001)
+                            .fixed_decimals(4))
+                            .changed()
+                        {
+                            self.modified = true;
+                        }
+                        ui.end_row();
                     });
 
                 ui.add_space(8.0);
