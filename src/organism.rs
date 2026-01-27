@@ -683,17 +683,17 @@ impl Organism {
                 (0.24 - 0.05 * (brain_complexity - 12) as f32).max(-0.30)
             }
         } else {
-            // WITH LEARNING: reduced bonus, earlier penalty
-            // Learning provides adaptation, not raw size
-            if brain_complexity <= 5 {
-                0.02 * brain_complexity as f32  // Max 0.10
-            } else if brain_complexity <= 8 {
-                0.10 + 0.005 * (brain_complexity - 5) as f32  // Max 0.115
-            } else if brain_complexity <= 10 {
-                0.115  // Capped
+            // WITH LEARNING: moderate bonus, penalty starts at 10+
+            // Similar to no-learning but capped earlier
+            if brain_complexity <= 6 {
+                0.025 * brain_complexity as f32  // Max 0.15
+            } else if brain_complexity <= 9 {
+                0.15 + 0.005 * (brain_complexity - 6) as f32  // Max 0.165
+            } else if brain_complexity <= 11 {
+                0.165  // Capped
             } else {
-                // Penalty: 11→0.075, 13→-0.005, 15→-0.085
-                (0.115 - 0.04 * (brain_complexity - 10) as f32).max(-0.30)
+                // Penalty: 12→0.125, 14→0.045, 16→-0.035
+                (0.165 - 0.04 * (brain_complexity - 11) as f32).max(-0.30)
             }
         };
 
