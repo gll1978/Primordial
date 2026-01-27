@@ -131,6 +131,24 @@ impl PatchWorld {
         }
     }
 
+    /// Reshuffle patch locations with a new seed (for procedural environments)
+    pub fn reshuffle_patches(&mut self, seed: u64) {
+        use rand::{Rng, SeedableRng};
+        let mut rng = rand_chacha::ChaCha8Rng::seed_from_u64(seed);
+        let radius = self.config.patch_radius;
+
+        for patch in &mut self.patches {
+            let x = rng.gen_range(radius..self.grid_size.saturating_sub(radius));
+            let y = rng.gen_range(radius..self.grid_size.saturating_sub(radius));
+            patch.x = x;
+            patch.y = y;
+            // Reset patch state
+            patch.capacity = patch.max_capacity;
+            patch.depleted_at = None;
+            patch.times_visited = 0;
+        }
+    }
+
     /// Update all patches (regeneration)
     pub fn update(&mut self, time: u64) {
         for patch in &mut self.patches {

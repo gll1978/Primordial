@@ -5,6 +5,7 @@ use crate::analysis::SurvivalAnalyzer;
 use crate::checkpoint::Checkpoint;
 use crate::config::Config;
 use crate::ecology::depletion::DepletionSystem;
+use crate::ecology::environment_manager::EnvironmentManager;
 use crate::ecology::food_patches::{PatchConfig, PatchWorld};
 use crate::ecology::large_prey::{CooperationManager, LargePrey};
 use crate::ecology::predation;
@@ -105,6 +106,10 @@ pub struct World {
     // Phase 1: Foraging Memory
     pub patch_world: Option<PatchWorld>,
     pub behavior_tracker: Option<BehaviorTrackerManager>,
+
+    // Phase 2: Procedural Environments
+    pub env_manager: Option<EnvironmentManager>,
+    pub last_max_generation: u64,
 
     // B3: Large Prey and Cooperation
     pub large_prey: Vec<LargePrey>,
@@ -247,6 +252,12 @@ impl World {
             } else {
                 None
             },
+            env_manager: if config.procedural_environment.enabled {
+                Some(EnvironmentManager::new(config.procedural_environment.clone()))
+            } else {
+                None
+            },
+            last_max_generation: 0,
             large_prey: Vec::new(),
             cooperation_manager: CooperationManager::new(),
             next_large_prey_id: 0,
@@ -343,6 +354,12 @@ impl World {
             } else {
                 None
             },
+            env_manager: if checkpoint.config.procedural_environment.enabled {
+                Some(EnvironmentManager::new(checkpoint.config.procedural_environment.clone()))
+            } else {
+                None
+            },
+            last_max_generation: 0,
             large_prey: Vec::new(),
             cooperation_manager: CooperationManager::new(),
             next_large_prey_id: 0,
@@ -415,7 +432,53 @@ impl World {
         // Phase 9: Update statistics
         self.update_stats();
 
+        // Phase 10: Check for environment reshuffle
+        self.check_environment_reshuffle();
+
         self.time += 1;
+    }
+
+    /// Check and execute environment reshuffle if needed
+    fn check_environment_reshuffle(&mut self) {
+        let current_max_gen = self.generation_max as u64;
+
+        // Only check when generation advances
+        if current_max_gen <= self.last_max_generation {
+            return;
+        }
+        self.last_max_generation = current_max_gen;
+
+        // Check generation-based reshuffle
+        let should_reshuffle = if let Some(ref env_mgr) = self.env_manager {
+            env_mgr.should_reshuffle_gen(current_max_gen)
+        } else {
+            false
+        };
+
+        if should_reshuffle {
+            if let Some(ref mut env_mgr) = self.env_manager {
+                let new_seed = env_mgr.next_seed(current_max_gen, self.time);
+                if let Some(ref mut patches) = self.patch_world {
+                    patches.reshuffle_patches(new_seed);
+                }
+            }
+        }
+
+        // Check step-based reshuffle
+        let should_reshuffle_step = if let Some(ref env_mgr) = self.env_manager {
+            env_mgr.should_reshuffle_step(self.time)
+        } else {
+            false
+        };
+
+        if should_reshuffle_step {
+            if let Some(ref mut env_mgr) = self.env_manager {
+                let new_seed = env_mgr.next_seed(current_max_gen, self.time);
+                if let Some(ref mut patches) = self.patch_world {
+                    patches.reshuffle_patches(new_seed);
+                }
+            }
+        }
     }
 
     /// Compute actions for all organisms in parallel

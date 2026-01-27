@@ -17,6 +17,8 @@ pub struct OrganismView {
     pub is_aquatic: bool,
     pub generation: u16,
     pub size: f32,
+    pub lineage_id: u32,
+    pub brain_layers: usize,
 }
 
 /// Detailed organism info for the selected organism panel
@@ -91,6 +93,8 @@ impl WorldSnapshot {
                 is_aquatic: o.is_aquatic,
                 generation: o.generation,
                 size: o.size,
+                lineage_id: o.lineage_id,
+                brain_layers: o.brain.layers.len(),
             })
             .collect();
 

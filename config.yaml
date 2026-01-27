@@ -128,6 +128,13 @@ food_patches:
   regeneration_time: 150  # Shorter regen delay
   min_distance: 8  # Allow denser placement
 
+# Phase 2: Procedural Environments
+procedural_environment:
+  enabled: true
+  reshuffle_interval: 50  # Every 50 generations
+  base_seed: 42
+  variation_level: 0.5
+
 # Phase 1: Behavior Tracking
 behavior_tracking:
   enabled: true

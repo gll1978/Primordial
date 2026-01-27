@@ -9,6 +9,7 @@
 //! - Large prey and cooperation (B3)
 
 pub mod depletion;
+pub mod environment_manager;
 pub mod food_patches;
 pub mod food_types;
 pub mod large_prey;
@@ -17,6 +18,7 @@ pub mod seasons;
 pub mod terrain;
 
 pub use depletion::{DepletionConfig, DepletionState, DepletionSystem};
+pub use environment_manager::{EnvironmentConfig, EnvironmentManager};
 pub use food_patches::{FoodPatch, PatchConfig, PatchWorld};
 pub use food_types::{DietSpecialization, FoodCell, FoodConfig};
 pub use large_prey::{CooperationManager, CooperationSignal, LargePrey, LargePreyConfig, TrustRelationship};

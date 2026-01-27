@@ -2,7 +2,7 @@
 //!
 //! Supports YAML configuration files with sensible defaults.
 
-use crate::ecology::{DepletionConfig, FoodConfig, LargePreyConfig, PredationConfig, SeasonsConfig, TerrainConfig};
+use crate::ecology::{DepletionConfig, EnvironmentConfig, FoodConfig, LargePreyConfig, PredationConfig, SeasonsConfig, TerrainConfig};
 use crate::genetics::sex::SexualReproductionConfig;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -38,6 +38,9 @@ pub struct Config {
     pub food_patches: FoodPatchesConfig,
     #[serde(default)]
     pub behavior_tracking: BehaviorTrackingConfig,
+    // Phase 2: Procedural Environments
+    #[serde(default)]
+    pub procedural_environment: EnvironmentConfig,
 }
 
 /// World/environment configuration
@@ -182,6 +185,7 @@ impl Default for Config {
             large_prey: LargePreyConfig::default(),
             food_patches: FoodPatchesConfig::default(),
             behavior_tracking: BehaviorTrackingConfig::default(),
+            procedural_environment: EnvironmentConfig::default(),
         }
     }
 }

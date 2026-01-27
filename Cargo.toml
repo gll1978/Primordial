@@ -47,6 +47,10 @@ visualization = ["plotters"]
 gui = ["egui", "eframe", "egui_plot"]
 
 [[bin]]
+name = "multi-env-test"
+path = "src/bin/multi_env_test.rs"
+
+[[bin]]
 name = "primordial-gui"
 path = "src/bin/gui.rs"
 required-features = ["gui"]

@@ -87,6 +87,14 @@ impl EvolutionEngine {
             mate_cooldown: 0,
             social_signal: crate::organism::SocialSignal::None,
             signal_cooldown: 0,
+            path_history: std::collections::VecDeque::with_capacity(5),
+            observed_predators: std::collections::HashMap::with_capacity(10),
+            cooperation_signal: crate::ecology::large_prey::CooperationSignal::None,
+            trust_relationships: std::collections::HashMap::with_capacity(10),
+            current_hunt_target: None,
+            coop_successes: 0,
+            coop_failures: 0,
+            last_coop_time: 0,
         }
     }
 
