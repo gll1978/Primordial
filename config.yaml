@@ -22,7 +22,7 @@
 
 world:
   grid_size: 100  # Smaller grid for denser population
-  food_regen_rate: 0.5  # Ambient food for survival
+  food_regen_rate: 0.4  # Reduced for sustained pressure
   food_max: 100.0
   initial_food_density: 0.7  # Standard
 
@@ -31,8 +31,8 @@ organisms:
   initial_energy: 120.0  # More starting energy
   reproduction_cost: 30.0  # Lower for easier reproduction
   reproduction_threshold: 50.0  # Lower threshold
-  metabolism_base: 0.5  # Moderate pressure
-  food_energy: 25.0  # Standard
+  metabolism_base: 0.55  # Slightly above baseline (was 0.5)
+  food_energy: 23.0  # Slightly reduced from 25
   move_cost: 0.2  # Lower move cost
 
 neural:
@@ -131,7 +131,8 @@ food_patches:
 # Phase 2: Procedural Environments
 procedural_environment:
   enabled: true
-  reshuffle_interval: 50  # Every 50 generations
+  reshuffle_interval: 100  # High threshold, rely on step-based
+  reshuffle_interval_steps: 15000  # Force reshuffle every 15k steps
   base_seed: 42
   variation_level: 0.5
 

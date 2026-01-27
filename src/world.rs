@@ -442,29 +442,28 @@ impl World {
     fn check_environment_reshuffle(&mut self) {
         let current_max_gen = self.generation_max as u64;
 
-        // Only check when generation advances
-        if current_max_gen <= self.last_max_generation {
-            return;
-        }
-        self.last_max_generation = current_max_gen;
+        // Check generation-based reshuffle (only when generation advances)
+        if current_max_gen > self.last_max_generation {
+            self.last_max_generation = current_max_gen;
 
-        // Check generation-based reshuffle
-        let should_reshuffle = if let Some(ref env_mgr) = self.env_manager {
-            env_mgr.should_reshuffle_gen(current_max_gen)
-        } else {
-            false
-        };
+            let should_reshuffle = if let Some(ref env_mgr) = self.env_manager {
+                env_mgr.should_reshuffle_gen(current_max_gen)
+            } else {
+                false
+            };
 
-        if should_reshuffle {
-            if let Some(ref mut env_mgr) = self.env_manager {
-                let new_seed = env_mgr.next_seed(current_max_gen, self.time);
-                if let Some(ref mut patches) = self.patch_world {
-                    patches.reshuffle_patches(new_seed);
+            if should_reshuffle {
+                if let Some(ref mut env_mgr) = self.env_manager {
+                    let new_seed = env_mgr.next_seed(current_max_gen, self.time);
+                    println!("*** RESHUFFLE (gen) at step {} gen {} seed {} ***", self.time, current_max_gen, new_seed);
+                    if let Some(ref mut patches) = self.patch_world {
+                        patches.reshuffle_patches(new_seed);
+                    }
                 }
             }
         }
 
-        // Check step-based reshuffle
+        // Check step-based reshuffle (independent of generation)
         let should_reshuffle_step = if let Some(ref env_mgr) = self.env_manager {
             env_mgr.should_reshuffle_step(self.time)
         } else {
@@ -474,6 +473,7 @@ impl World {
         if should_reshuffle_step {
             if let Some(ref mut env_mgr) = self.env_manager {
                 let new_seed = env_mgr.next_seed(current_max_gen, self.time);
+                println!("*** RESHUFFLE (step) at step {} gen {} seed {} ***", self.time, current_max_gen, new_seed);
                 if let Some(ref mut patches) = self.patch_world {
                     patches.reshuffle_patches(new_seed);
                 }
