@@ -1,9 +1,12 @@
 //! World simulation engine - main simulation loop.
 
+use crate::analysis::behavior_tracker::BehaviorTrackerManager;
 use crate::analysis::SurvivalAnalyzer;
 use crate::checkpoint::Checkpoint;
 use crate::config::Config;
 use crate::ecology::depletion::DepletionSystem;
+use crate::ecology::food_patches::{PatchConfig, PatchWorld};
+use crate::ecology::large_prey::{CooperationManager, LargePrey};
 use crate::ecology::predation;
 use crate::ecology::seasons::SeasonalSystem;
 use crate::ecology::terrain::TerrainGrid;
@@ -98,6 +101,15 @@ pub struct World {
 
     // Cognitive Tasks: Temporal Prediction
     pub food_history: VecDeque<f32>,
+
+    // Phase 1: Foraging Memory
+    pub patch_world: Option<PatchWorld>,
+    pub behavior_tracker: Option<BehaviorTrackerManager>,
+
+    // B3: Large Prey and Cooperation
+    pub large_prey: Vec<LargePrey>,
+    pub cooperation_manager: CooperationManager,
+    pub next_large_prey_id: u64,
 }
 
 impl World {
@@ -151,6 +163,22 @@ impl World {
                 terrain_grid.generate_clustered(Some(seed));
             }
         }
+
+        // Initialize food patches
+        let patch_world = if config.food_patches.enabled {
+            let patch_config = PatchConfig {
+                patch_count: config.food_patches.patch_count,
+                initial_capacity: config.food_patches.initial_capacity,
+                depletion_rate: config.food_patches.depletion_rate,
+                regeneration_rate: config.food_patches.regeneration_rate,
+                regeneration_time: config.food_patches.regeneration_time,
+                min_distance: config.food_patches.min_distance,
+                patch_radius: 3,
+            };
+            Some(PatchWorld::new(&patch_config, grid_size as u8, &mut rng))
+        } else {
+            None
+        };
 
         // Initialize depletion system
         let depletion_system = DepletionSystem::new(grid_size);
@@ -210,6 +238,18 @@ impl World {
             survival_analyzer,
             food_memory: HashMap::new(),
             food_history: VecDeque::with_capacity(100),
+            patch_world,
+            behavior_tracker: if config.behavior_tracking.enabled {
+                Some(BehaviorTrackerManager::new(
+                    config.behavior_tracking.max_tracked,
+                    config.behavior_tracking.sample_rate,
+                ))
+            } else {
+                None
+            },
+            large_prey: Vec::new(),
+            cooperation_manager: CooperationManager::new(),
+            next_large_prey_id: 0,
         };
 
         // Initial spatial index update
@@ -235,6 +275,23 @@ impl World {
                 terrain_grid.generate_clustered(Some(checkpoint.random_seed));
             }
         }
+
+        // Initialize food patches (state not preserved in checkpoint)
+        let mut checkpoint_rng = ChaCha8Rng::seed_from_u64(checkpoint.random_seed.wrapping_add(1));
+        let patch_world = if checkpoint.config.food_patches.enabled {
+            let patch_config = PatchConfig {
+                patch_count: checkpoint.config.food_patches.patch_count,
+                initial_capacity: checkpoint.config.food_patches.initial_capacity,
+                depletion_rate: checkpoint.config.food_patches.depletion_rate,
+                regeneration_rate: checkpoint.config.food_patches.regeneration_rate,
+                regeneration_time: checkpoint.config.food_patches.regeneration_time,
+                min_distance: checkpoint.config.food_patches.min_distance,
+                patch_radius: 3,
+            };
+            Some(PatchWorld::new(&patch_config, grid_size as u8, &mut checkpoint_rng))
+        } else {
+            None
+        };
 
         // New depletion system (state not preserved in checkpoint)
         let depletion_system = DepletionSystem::new(grid_size);
@@ -277,6 +334,18 @@ impl World {
             survival_analyzer,
             food_memory: HashMap::new(),
             food_history: VecDeque::with_capacity(100),
+            patch_world,
+            behavior_tracker: if checkpoint.config.behavior_tracking.enabled {
+                Some(BehaviorTrackerManager::new(
+                    checkpoint.config.behavior_tracking.max_tracked,
+                    checkpoint.config.behavior_tracking.sample_rate,
+                ))
+            } else {
+                None
+            },
+            large_prey: Vec::new(),
+            cooperation_manager: CooperationManager::new(),
+            next_large_prey_id: 0,
         };
 
         world.update_spatial_index();
@@ -317,6 +386,9 @@ impl World {
         // Phase 3: Handle predation (Attack actions)
         self.handle_predation(&actions);
 
+        // Phase 3.5: B3 - Handle large prey attacks
+        self.handle_large_prey_attacks(&actions);
+
         // Phase 4: Update organisms (aging, metabolism)
         self.update_organisms();
 
@@ -332,6 +404,10 @@ impl World {
         // Phase 7.5: Update cognitive systems (memory & history)
         self.update_food_memory();
         self.update_food_history();
+        self.update_predator_observations(); // B2: Pattern Recognition
+        self.update_large_prey();            // B3: Large prey movement/escape
+        self.maybe_spawn_large_prey();       // B3: Maybe spawn new large prey
+        self.cleanup_cooperation();          // B3: Cleanup cooperation state
 
         // Phase 8: Update spatial index
         self.update_spatial_index();
@@ -378,10 +454,10 @@ impl World {
                     &cognitive,
                 );
 
-                // Forward pass through neural network
+                // Forward pass through neural network (75 inputs -> 15 outputs)
                 let outputs = org.brain.forward(&inputs);
-                let mut output_array = [0.0f32; 12];
-                for (i, &val) in outputs.iter().take(12).enumerate() {
+                let mut output_array = [0.0f32; 15];
+                for (i, &val) in outputs.iter().take(15).enumerate() {
                     output_array[i] = val;
                 }
 
@@ -450,6 +526,25 @@ impl World {
             }
         }
 
+        // B1: Sequential Memory - calculate path-based inputs
+        let loop_detected = if org.detect_loop() { 1.0 } else { 0.0 };
+        let oscillation = if org.detect_oscillation() { 1.0 } else { 0.0 };
+        let path_entropy = org.calculate_path_entropy();
+        let (movement_bias_x, movement_bias_y) = org.calculate_movement_bias();
+        let recent_dirs = org.get_recent_direction();
+
+        // B2: Pattern Recognition - find nearest observed predator
+        let (pred_movement_variance, pred_speed, pred_direction_consistency,
+             pred_strategy_random, pred_strategy_patrol, pred_strategy_chase, pred_strategy_ambush,
+             pred_classification_confidence, pred_approach_angle, pred_relative_speed,
+             pred_time_observed, pred_threat_level) = self.get_predator_inputs(org);
+
+        // B3: Multi-Agent Coordination inputs
+        let (large_prey_nearby, large_prey_distance, large_prey_health, large_prey_attackers,
+             large_prey_need, partner_nearby, partner_trust, partner_distance,
+             cooperation_proposed, cooperation_active, hunt_success_rate, partner_fitness,
+             own_attack_power, time_since_last_coop, prey_escape_urgency) = self.get_cooperation_inputs(org);
+
         CognitiveInputs {
             depletion_n: depletions[0],
             depletion_ne: depletions[1],
@@ -465,7 +560,418 @@ impl World {
             signal_danger,
             signal_food,
             signal_help,
+            // B1: Sequential Memory inputs
+            loop_detected,
+            oscillation,
+            path_entropy,
+            movement_bias_x,
+            movement_bias_y,
+            recent_dir_n: recent_dirs[0],
+            recent_dir_e: recent_dirs[1],
+            recent_dir_s: recent_dirs[2],
+            recent_dir_w: recent_dirs[3],
+            recent_dir_none: recent_dirs[4],
+            // B2: Pattern Recognition inputs
+            pred_movement_variance,
+            pred_speed,
+            pred_direction_consistency,
+            pred_strategy_random,
+            pred_strategy_patrol,
+            pred_strategy_chase,
+            pred_strategy_ambush,
+            pred_classification_confidence,
+            pred_approach_angle,
+            pred_relative_speed,
+            pred_time_observed,
+            pred_threat_level,
+            // B3: Multi-Agent Coordination inputs
+            large_prey_nearby,
+            large_prey_distance,
+            large_prey_health,
+            large_prey_attackers,
+            large_prey_need,
+            partner_nearby,
+            partner_trust,
+            partner_distance,
+            cooperation_proposed,
+            cooperation_active,
+            hunt_success_rate,
+            partner_fitness,
+            own_attack_power,
+            time_since_last_coop,
+            prey_escape_urgency,
         }
+    }
+
+    /// B3: Get cooperation and large prey inputs for an organism
+    fn get_cooperation_inputs(&self, org: &Organism) -> (f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32) {
+        // Find nearest large prey
+        let mut nearest_prey: Option<&LargePrey> = None;
+        let mut min_dist = f32::MAX;
+
+        for prey in &self.large_prey {
+            let dx = prey.x as i32 - org.x as i32;
+            let dy = prey.y as i32 - org.y as i32;
+            let dist = ((dx * dx + dy * dy) as f32).sqrt();
+            if dist < min_dist {
+                min_dist = dist;
+                nearest_prey = Some(prey);
+            }
+        }
+
+        let (large_prey_nearby, large_prey_distance, large_prey_health, large_prey_attackers,
+             large_prey_need, prey_escape_urgency) = if let Some(prey) = nearest_prey {
+            let sense_range = 10.0;
+            if min_dist <= sense_range {
+                // Count current attackers on this prey
+                let attackers = self.count_attackers_on_prey(prey.id);
+                let need = (prey.attackers_needed as i32 - attackers as i32).max(0) as f32;
+
+                (
+                    1.0,                                      // prey nearby
+                    (min_dist / sense_range).min(1.0),       // normalized distance
+                    prey.health / prey.max_health,            // normalized health
+                    (attackers as f32 / 5.0).min(1.0),       // normalized attackers
+                    (need / 3.0).min(1.0),                   // normalized need
+                    1.0 - (prey.escape_timer as f32 / prey.max_escape_timer as f32), // urgency
+                )
+            } else {
+                (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+            }
+        } else {
+            (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        };
+
+        // Find nearest potential cooperation partner
+        let sense_range = 5u8;
+        let neighbors = self.spatial_index.query_neighbors(org.x, org.y, sense_range);
+
+        let mut best_partner_trust = 0.0f32;
+        let mut partner_dist = 1.0f32;
+        let mut partner_fitness_val = 0.0f32;
+        let mut found_partner = false;
+
+        for &neighbor_idx in &neighbors {
+            if neighbor_idx >= self.organisms.len() {
+                continue;
+            }
+            let other = &self.organisms[neighbor_idx];
+            if other.id == org.id || !other.is_alive() {
+                continue;
+            }
+            // Potential partner: has kills (can hunt) or has high energy
+            if other.kills > 0 || other.energy > 50.0 {
+                found_partner = true;
+                let dx = other.x as i32 - org.x as i32;
+                let dy = other.y as i32 - org.y as i32;
+                let dist = ((dx * dx + dy * dy) as f32).sqrt() / sense_range as f32;
+
+                if dist < partner_dist {
+                    partner_dist = dist;
+                    partner_fitness_val = (other.fitness() / 1000.0).min(1.0);
+
+                    // Check trust relationship
+                    if let Some(trust) = org.trust_relationships.get(&other.id) {
+                        best_partner_trust = trust.trust_level;
+                    }
+                }
+            }
+        }
+
+        let partner_nearby = if found_partner { 1.0 } else { 0.0 };
+        let partner_trust = best_partner_trust;
+        let partner_distance = partner_dist;
+        let partner_fitness = partner_fitness_val;
+
+        // Check if we received a cooperation proposal
+        let cooperation_proposed = if self.cooperation_manager.proposals.iter()
+            .any(|(_, t, _)| *t == org.id) { 1.0 } else { 0.0 };
+
+        // Check if currently cooperating
+        let cooperation_active = if self.cooperation_manager.is_cooperating(org.id) { 1.0 } else { 0.0 };
+
+        // Hunt success rate
+        let total_hunts = org.coop_successes + org.coop_failures;
+        let hunt_success_rate = if total_hunts > 0 {
+            org.coop_successes as f32 / total_hunts as f32
+        } else {
+            0.5 // Default neutral
+        };
+
+        // Own attack power (based on size and is_predator)
+        let own_attack_power = (org.size / 3.0 + if org.is_predator { 0.3 } else { 0.0 }).min(1.0);
+
+        // Time since last cooperation
+        let time_since_last_coop = ((self.time.saturating_sub(org.last_coop_time)) as f32 / 500.0).min(1.0);
+
+        (
+            large_prey_nearby, large_prey_distance, large_prey_health, large_prey_attackers,
+            large_prey_need, partner_nearby, partner_trust, partner_distance,
+            cooperation_proposed, cooperation_active, hunt_success_rate, partner_fitness,
+            own_attack_power, time_since_last_coop, prey_escape_urgency,
+        )
+    }
+
+    /// Count attackers currently targeting a large prey
+    fn count_attackers_on_prey(&self, prey_id: u64) -> usize {
+        self.organisms.iter()
+            .filter(|o| o.is_alive() && o.current_hunt_target == Some(prey_id))
+            .count()
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // B3: LARGE PREY AND COOPERATION SYSTEM
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    /// Maybe spawn a large prey (called each step)
+    pub fn maybe_spawn_large_prey(&mut self) {
+        if !self.config.large_prey.enabled {
+            return;
+        }
+
+        // Check if below max
+        if self.large_prey.len() >= self.config.large_prey.max_large_prey {
+            return;
+        }
+
+        // Check minimum population
+        let pop = self.population();
+        if pop < self.config.large_prey.min_population {
+            return;
+        }
+
+        // Random spawn chance
+        if self.rng.gen::<f32>() < self.config.large_prey.spawn_chance {
+            let x = self.rng.gen_range(5..self.config.world.grid_size as u8 - 5);
+            let y = self.rng.gen_range(5..self.config.world.grid_size as u8 - 5);
+
+            let prey = LargePrey::new(self.next_large_prey_id, x, y);
+            self.next_large_prey_id += 1;
+            self.large_prey.push(prey);
+        }
+    }
+
+    /// Update large prey (movement, escape timers)
+    pub fn update_large_prey(&mut self) {
+        let grid_size = self.config.world.grid_size as u8;
+
+        // Update each prey
+        for prey in &mut self.large_prey {
+            // Random wander
+            if self.rng.gen::<f32>() < 0.3 {
+                prey.wander(grid_size, &mut self.rng);
+            }
+        }
+
+        // Remove escaped prey and clean up cooperations
+        let escaped_ids: Vec<u64> = self.large_prey.iter()
+            .filter(|p| p.has_escaped())
+            .map(|p| p.id)
+            .collect();
+
+        for prey_id in &escaped_ids {
+            self.cooperation_manager.remove_for_prey(*prey_id);
+            // Mark cooperation as failed for organisms targeting this prey
+            for org in &mut self.organisms {
+                if org.current_hunt_target == Some(*prey_id) {
+                    org.coop_failures += 1;
+                    org.current_hunt_target = None;
+                }
+            }
+        }
+
+        self.large_prey.retain(|p| !p.has_escaped());
+    }
+
+    /// Handle large prey attacks
+    pub fn handle_large_prey_attacks(&mut self, actions: &[(usize, Action)]) {
+        if !self.config.large_prey.enabled || self.large_prey.is_empty() {
+            return;
+        }
+
+        // Group attackers by prey
+        let mut attacks_by_prey: HashMap<u64, Vec<usize>> = HashMap::new();
+
+        for &(idx, action) in actions {
+            if action != Action::AttackLargePrey {
+                continue;
+            }
+            if idx >= self.organisms.len() || !self.organisms[idx].is_alive() {
+                continue;
+            }
+
+            let org = &self.organisms[idx];
+            if let Some(prey_id) = org.current_hunt_target {
+                attacks_by_prey.entry(prey_id).or_default().push(idx);
+            } else {
+                // No target, find nearest large prey
+                let org_x = org.x;
+                let org_y = org.y;
+                if let Some(prey) = self.large_prey.iter()
+                    .filter(|p| {
+                        let dx = (p.x as i32 - org_x as i32).abs();
+                        let dy = (p.y as i32 - org_y as i32).abs();
+                        dx <= 2 && dy <= 2 // Must be close
+                    })
+                    .min_by_key(|p| {
+                        let dx = p.x as i32 - org_x as i32;
+                        let dy = p.y as i32 - org_y as i32;
+                        dx * dx + dy * dy
+                    })
+                {
+                    attacks_by_prey.entry(prey.id).or_default().push(idx);
+                }
+            }
+        }
+
+        // Process attacks on each prey
+        let mut killed_prey: Vec<u64> = Vec::new();
+
+        for (prey_id, attacker_indices) in attacks_by_prey {
+            let prey_idx = match self.large_prey.iter().position(|p| p.id == prey_id) {
+                Some(idx) => idx,
+                None => continue,
+            };
+
+            let num_attackers = attacker_indices.len() as u32;
+
+            // Calculate damage per attacker
+            let damage_per_attacker: f32 = attacker_indices.iter()
+                .map(|&idx| self.organisms[idx].size * 5.0) // Size-based damage
+                .sum::<f32>() / num_attackers as f32;
+
+            // Apply damage
+            let actual_damage = self.large_prey[prey_idx].take_damage(damage_per_attacker, num_attackers);
+
+            if actual_damage > 0.0 {
+                // Damage was dealt (enough attackers)
+                if self.large_prey[prey_idx].is_dead() {
+                    // Prey killed! Distribute rewards
+                    let reward = self.large_prey[prey_idx].reward_per_attacker(num_attackers);
+                    killed_prey.push(prey_id);
+
+                    for &idx in &attacker_indices {
+                        self.organisms[idx].energy += reward;
+                        self.organisms[idx].coop_successes += 1;
+                        self.organisms[idx].last_coop_time = self.time;
+                        self.organisms[idx].current_hunt_target = None;
+
+                        // Update trust for cooperation partners
+                        if let Some(partner_id) = self.cooperation_manager.get_partner(self.organisms[idx].id) {
+                            let trust = self.organisms[idx].trust_relationships
+                                .entry(partner_id)
+                                .or_insert_with(|| crate::ecology::large_prey::TrustRelationship::new(partner_id, self.time));
+                            trust.record_success(self.time);
+                        }
+                    }
+                }
+            } else {
+                // Not enough attackers - small energy cost for trying
+                for &idx in &attacker_indices {
+                    self.organisms[idx].energy -= 1.0;
+                }
+            }
+        }
+
+        // Remove killed prey and clean up cooperations
+        for prey_id in killed_prey {
+            self.cooperation_manager.remove_for_prey(prey_id);
+            self.large_prey.retain(|p| p.id != prey_id);
+        }
+    }
+
+    /// Clean up cooperation state
+    pub fn cleanup_cooperation(&mut self) {
+        self.cooperation_manager.cleanup(self.time);
+
+        // Decay trust relationships
+        for org in &mut self.organisms {
+            org.trust_relationships.retain(|_, trust| {
+                trust.decay(self.time);
+                !trust.is_stale(self.time, 1000)
+            });
+
+            // Reset cooperation signal
+            if org.cooperation_signal != crate::ecology::large_prey::CooperationSignal::None {
+                org.cooperation_signal = crate::ecology::large_prey::CooperationSignal::None;
+            }
+        }
+    }
+
+    /// B2: Get predator pattern recognition inputs for an organism
+    fn get_predator_inputs(&self, org: &Organism) -> (f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32) {
+        // Find the nearest/most threatening observed predator
+        let mut best_obs: Option<&crate::ecology::predation::PredatorObservation> = None;
+        let mut best_threat = 0.0f32;
+
+        for (_pred_id, obs) in &org.observed_predators {
+            // Skip stale observations
+            if obs.is_stale(self.time, 50) {
+                continue;
+            }
+
+            // Calculate threat level based on distance and speed
+            if let Some(&(pred_x, pred_y)) = obs.positions.back() {
+                let dx = pred_x as i32 - org.x as i32;
+                let dy = pred_y as i32 - org.y as i32;
+                let dist = ((dx * dx + dy * dy) as f32).sqrt().max(1.0);
+
+                // Threat = (speed * chasing_factor) / distance
+                let chasing_factor = if obs.is_chasing { 2.0 } else { 1.0 };
+                let threat = (obs.average_speed * chasing_factor) / dist;
+
+                if threat > best_threat {
+                    best_threat = threat;
+                    best_obs = Some(obs);
+                }
+            }
+        }
+
+        // If no predator observed, return zeros
+        let Some(obs) = best_obs else {
+            return (0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+        };
+
+        // Extract features
+        let strategy = obs.strategy_one_hot();
+        let approach_angle = obs.approach_angle(org.x, org.y);
+
+        // Time observed (normalized, max 100 steps)
+        let time_observed = (obs.positions.len() as f32 / 10.0).min(1.0);
+
+        // Relative speed (positive = predator faster)
+        // Estimate organism's speed from path history
+        let org_speed = if org.path_history.len() >= 2 {
+            let mut total = 0.0f32;
+            for i in 1..org.path_history.len() {
+                let (px, py) = org.path_history[i - 1];
+                let (cx, cy) = org.path_history[i];
+                let d = (((cx as i32 - px as i32).pow(2) + (cy as i32 - py as i32).pow(2)) as f32).sqrt();
+                total += d;
+            }
+            total / (org.path_history.len() - 1) as f32
+        } else {
+            0.5 // Default
+        };
+        let relative_speed = ((obs.average_speed - org_speed) / 2.0).clamp(-1.0, 1.0);
+
+        // Threat level (0-1, combines multiple factors)
+        let threat_level = (best_threat / 5.0).clamp(0.0, 1.0);
+
+        (
+            (obs.movement_variance / 3.0).min(1.0),  // Normalize variance
+            obs.average_speed.min(1.0),               // Speed (already 0-1 ish)
+            obs.direction_consistency,                // Already 0-1
+            strategy[0],                              // Random
+            strategy[1],                              // Patrol
+            strategy[2],                              // Chase
+            strategy[3],                              // Ambush
+            obs.confidence,                           // Already 0-1
+            approach_angle,                           // Already 0-1
+            relative_speed,                           // -1 to +1
+            time_observed,                            // 0-1
+            threat_level,                             // 0-1
+        )
     }
 
     /// Execute actions sequentially
@@ -509,15 +1015,37 @@ impl World {
                     // Check depletion level BEFORE eating
                     let depletion = self.get_food_depletion(org_x, org_y);
 
-                    // Reduce effective food energy based on depletion
-                    // Depleted cells give 70% less energy (very strong pressure for memory use)
-                    let effective_food_energy = self.config.organisms.food_energy * (1.0 - depletion * 0.70);
+                    // MODERATE MODE: Reduce effective food energy based on depletion
+                    let effective_food_energy = self.config.organisms.food_energy * (1.0 - depletion * 0.50);
+
+                    // Patch proximity bonus: eating near a food patch gives 2x energy
+                    // This creates strong selective pressure for spatial memory
+                    let patch_bonus = if let Some(ref patches) = self.patch_world {
+                        if patches.get_nearest_patch(org_x, org_y, patches.config.patch_radius).is_some() {
+                            2.0
+                        } else {
+                            0.5 // Eating far from patches gives half energy
+                        }
+                    } else {
+                        1.0
+                    };
+                    let effective_food_energy = effective_food_energy * patch_bonus;
 
                     let result = self.organisms[idx].try_eat(&mut self.food_grid, effective_food_energy);
 
                     // Record food consumption for spatial memory
                     if matches!(result, crate::organism::ActionResult::Success) {
                         self.record_food_eaten(org_x, org_y);
+                        // Deplete nearby food patch and track visit
+                        if let Some(ref mut patches) = self.patch_world {
+                            if let Some(idx_p) = patches.get_nearest_patch(org_x, org_y, patches.config.patch_radius) {
+                                patches.patches[idx_p].deplete(patches.config.depletion_rate, self.time);
+                                if let Some(ref mut bt) = self.behavior_tracker {
+                                    let org_id = self.organisms[idx].id;
+                                    bt.track_patch_visit(org_id, self.time, idx_p);
+                                }
+                            }
+                        }
                     }
                 }
                 Action::Signal(val) => {
@@ -542,6 +1070,67 @@ impl World {
                 }
                 Action::Reproduce | Action::Attack => {
                     // Handled separately
+                }
+                Action::ProposeCooperation => {
+                    // B3: Propose cooperation to nearest potential partner
+                    let sense_range = 3u8;
+                    let neighbors = self.spatial_index.query_neighbors(
+                        self.organisms[idx].x,
+                        self.organisms[idx].y,
+                        sense_range
+                    );
+
+                    for &neighbor_idx in &neighbors {
+                        if neighbor_idx >= self.organisms.len() || neighbor_idx == idx {
+                            continue;
+                        }
+                        let other = &self.organisms[neighbor_idx];
+                        if other.is_alive() && (other.kills > 0 || other.energy > 50.0) {
+                            let proposer_id = self.organisms[idx].id;
+                            let target_id = other.id;
+                            self.cooperation_manager.propose(proposer_id, target_id, self.time);
+                            self.organisms[idx].cooperation_signal =
+                                crate::ecology::large_prey::CooperationSignal::ProposeCooperation;
+                            break;
+                        }
+                    }
+                }
+                Action::AcceptCooperation => {
+                    // B3: Accept cooperation proposal
+                    let accepter_id = self.organisms[idx].id;
+                    // Find nearest large prey to target
+                    let org_x = self.organisms[idx].x;
+                    let org_y = self.organisms[idx].y;
+                    let prey_id = self.large_prey.iter()
+                        .min_by_key(|p| {
+                            let dx = p.x as i32 - org_x as i32;
+                            let dy = p.y as i32 - org_y as i32;
+                            dx * dx + dy * dy
+                        })
+                        .map(|p| p.id)
+                        .unwrap_or(0);
+
+                    if let Some(proposer_id) = self.cooperation_manager.accept(accepter_id, prey_id, self.time) {
+                        self.organisms[idx].cooperation_signal =
+                            crate::ecology::large_prey::CooperationSignal::AcceptCooperation;
+                        self.organisms[idx].current_hunt_target = Some(prey_id);
+
+                        // Update proposer's hunt target too
+                        for org in &mut self.organisms {
+                            if org.id == proposer_id {
+                                org.current_hunt_target = Some(prey_id);
+                                break;
+                            }
+                        }
+                    }
+                }
+                Action::RejectCooperation => {
+                    // B3: Reject cooperation (just set signal)
+                    self.organisms[idx].cooperation_signal =
+                        crate::ecology::large_prey::CooperationSignal::RejectCooperation;
+                }
+                Action::AttackLargePrey => {
+                    // B3: Attack large prey (handled in handle_large_prey_attacks)
                 }
             }
 
@@ -637,6 +1226,37 @@ impl World {
         self.organisms[idx].x = new_xu;
         self.organisms[idx].y = new_yu;
         self.organisms[idx].energy -= move_cost;
+
+        // B1: Record movement for path tracking
+        self.organisms[idx].record_movement();
+
+        // Phase 1: Track movement for behavior analysis
+        if let Some(ref mut bt) = self.behavior_tracker {
+            let org_id = self.organisms[idx].id;
+            bt.start_tracking(org_id);
+            bt.track_movement(org_id, new_xu, new_yu);
+        }
+
+        // MODERATE MODE: Penalties for suboptimal behavior (B1 Sequential Memory)
+        // Balanced to create pressure without causing mass extinction
+        if self.organisms[idx].detect_loop() {
+            // Adaptive loop penalty: 3x base, gentle in survival mode
+            let penalty = if self.organisms[idx].energy > 20.0 {
+                9.0  // 3× instead of 5× - maintains selection pressure
+            } else {
+                3.0  // Survival mode - prevents death spiral
+            };
+            self.organisms[idx].energy -= penalty;
+        }
+        if self.organisms[idx].detect_oscillation() {
+            // Adaptive oscillation penalty: 3x base, gentle in survival mode
+            let penalty = if self.organisms[idx].energy > 20.0 {
+                6.0  // 3× instead of 5×
+            } else {
+                2.0  // Survival mode
+            };
+            self.organisms[idx].energy -= penalty;
+        }
     }
 
     /// Update all organisms (aging, metabolism)
@@ -658,6 +1278,7 @@ impl World {
     }
 
     /// Handle asexual reproduction (original behavior)
+    /// HARSH MODE: Fitness-based selection - higher fitness = higher reproduction probability
     fn handle_asexual_reproduction(&mut self) {
         let mut offspring = Vec::new();
 
@@ -678,14 +1299,27 @@ impl World {
             .map(|(idx, _)| idx)
             .collect();
 
+        // HARSH MODE: Calculate max fitness for normalization
+        let max_fitness = candidates
+            .iter()
+            .map(|&idx| self.organisms[idx].fitness())
+            .fold(1.0f32, |a, b| a.max(b));
+
         // Process reproductions
         for idx in candidates {
             if offspring.len() >= space_available {
                 break;
             }
 
-            // Random chance to reproduce each step (60% probability)
-            if self.rng.gen::<f32>() > 0.6 {
+            // HARSH MODE: Fitness-based reproduction probability
+            // Higher fitness organisms reproduce more often
+            // Base 30% + up to 50% based on relative fitness
+            let fitness = self.organisms[idx].fitness();
+            let relative_fitness = fitness / max_fitness;
+            let reproduction_probability = 0.3 + 0.5 * relative_fitness;
+
+            // Random chance based on fitness (replaces fixed 60% threshold)
+            if self.rng.gen::<f32>() > reproduction_probability {
                 continue;
             }
 
@@ -914,6 +1548,14 @@ impl World {
             mate_cooldown: 0,
             social_signal: crate::organism::SocialSignal::None,
             signal_cooldown: 0,
+            path_history: VecDeque::with_capacity(5),
+            observed_predators: HashMap::with_capacity(10),
+            cooperation_signal: crate::ecology::large_prey::CooperationSignal::None,
+            trust_relationships: HashMap::with_capacity(10),
+            current_hunt_target: None,
+            coop_successes: 0,
+            coop_failures: 0,
+            last_coop_time: 0,
         };
 
         // Mutate child's brain
@@ -968,6 +1610,11 @@ impl World {
                 // Record in survival analyzer (estimate birth time from age)
                 let birth_time = self.time.saturating_sub(org.age as u64);
                 self.survival_analyzer.record_death(org, birth_time, self.time);
+
+                // Mark dead in behavior tracker
+                if let Some(ref mut bt) = self.behavior_tracker {
+                    bt.mark_dead(org.id);
+                }
             }
         }
 
@@ -1071,8 +1718,16 @@ impl World {
 
     /// Update environment (food regeneration with seasonal and terrain multipliers)
     fn update_environment(&mut self) {
+        // Update food patches (regeneration) and write to grid
+        if let Some(ref mut patches) = self.patch_world {
+            patches.update(self.time);
+            patches.write_to_food_grid(&mut self.food_grid, self.config.world.food_max);
+        }
+
         // Get seasonal multiplier
         let season_multiplier = self.seasonal_system.food_multiplier();
+        // Reduce ambient food regen when patches are active
+        let patch_mult = 1.0; // No ambient food reduction - patches add bonus food on top
 
         // Update depletion states and regenerate food with terrain/depletion modifiers
         if self.config.terrain.enabled || self.config.depletion.enabled {
@@ -1109,7 +1764,7 @@ impl World {
                     };
 
                     // Combined regeneration
-                    let total_mult = season_multiplier * terrain_mult * depletion_mult;
+                    let total_mult = season_multiplier * terrain_mult * depletion_mult * patch_mult;
                     let current = self.food_grid.get(xu, yu);
                     let new_food = (current + self.config.world.food_regen_rate * total_mult)
                         .min(self.config.world.food_max);
@@ -1119,7 +1774,7 @@ impl World {
         } else {
             // Simple regeneration (no terrain/depletion)
             self.food_grid
-                .regenerate(self.config.world.food_regen_rate * season_multiplier);
+                .regenerate(self.config.world.food_regen_rate * season_multiplier * patch_mult);
         }
 
         // Random food spawning (also affected by season)
@@ -1200,6 +1855,69 @@ impl World {
     /// Get seed for reproducibility
     pub fn seed(&self) -> u64 {
         self.seed
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // B2: PREDATOR PATTERN RECOGNITION
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    /// Update predator observations for all organisms
+    pub fn update_predator_observations(&mut self) {
+        use crate::ecology::predation::PredatorObservation;
+
+        let time = self.time;
+        let sense_range = 5u8;
+
+        // Collect predator info: (id, x, y) for all predators
+        let predators: Vec<(u64, u8, u8)> = self.organisms.iter()
+            .filter(|o| o.is_alive() && (o.is_predator || o.kills > 0))
+            .map(|o| (o.id, o.x, o.y))
+            .collect();
+
+        // For each non-predator organism, update observations
+        for org in &mut self.organisms {
+            if !org.is_alive() || org.is_predator {
+                continue;
+            }
+
+            // Clean up stale observations (max 50 steps old)
+            org.observed_predators.retain(|_, obs| !obs.is_stale(time, 50));
+
+            // Limit to max 10 tracked predators
+            while org.observed_predators.len() > 10 {
+                // Remove oldest
+                if let Some(oldest_id) = org.observed_predators.iter()
+                    .min_by_key(|(_, obs)| obs.last_seen)
+                    .map(|(id, _)| *id)
+                {
+                    org.observed_predators.remove(&oldest_id);
+                } else {
+                    break;
+                }
+            }
+
+            // Update/add observations for nearby predators
+            for &(pred_id, pred_x, pred_y) in &predators {
+                if pred_id == org.id {
+                    continue; // Skip self
+                }
+
+                // Check if in sensing range
+                let dx = (pred_x as i16 - org.x as i16).abs();
+                let dy = (pred_y as i16 - org.y as i16).abs();
+                if dx > sense_range as i16 || dy > sense_range as i16 {
+                    continue; // Too far
+                }
+
+                // Update existing or create new observation
+                if let Some(obs) = org.observed_predators.get_mut(&pred_id) {
+                    obs.update(pred_x, pred_y, time, org.x, org.y);
+                } else {
+                    // New predator spotted
+                    org.observed_predators.insert(pred_id, PredatorObservation::new(pred_x, pred_y, time));
+                }
+            }
+        }
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

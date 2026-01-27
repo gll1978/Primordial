@@ -1,57 +1,58 @@
-# PRIMORDIAL V2 - Cognitive Tasks Configuration for Brain Evolution
-# TARGET: Break plateau at 1.0 → reach 2.5-3.5 layers
+# PRIMORDIAL V2 - Advanced Cognitive Tasks for Brain Evolution 2.5+
+# TARGET: Break plateau at 1.0 → reach 2.5-4.0 layers
 #
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # COGNITIVE TASKS IMPLEMENTED:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-#   Phase 1: Spatial Memory (8 sensors)
-#     - Track recently eaten cells → avoid revisiting
-#     - Requires hidden layers for state integration
+#   B1: Sequential Memory (10 inputs) - Path Tracking
+#     - Loop detection, oscillation, path entropy
+#     - Requires 2+ hidden layers for temporal integration
 #
-#   Phase 2: Temporal Prediction (3 sensors)
-#     - Season progress, food trend, time to season change
-#     - Requires pattern integration → 2+ layers
+#   B2: Pattern Recognition (12 inputs) - Predator Strategies
+#     - Classify predators: Random, Patrol, Chase, Ambush
+#     - Requires 2-3 hidden layers for pattern classification
 #
-#   Phase 3: Social Communication (3 sensors + 2 actions)
-#     - Signal Danger/FoodFound to nearby organisms
-#     - Requires theory of mind → 3+ layers
+#   B3: Multi-Agent Coordination (15 inputs, 4 outputs) - Cooperative Hunting
+#     - Large prey requiring 2+ attackers
+#     - Trust relationships, cooperation signals
+#     - Requires 3+ hidden layers for theory of mind
 #
-# EXPECTED: brain_mean 2.5-3.5 (vs 1.0 baseline)
+# EXPECTED: brain_mean 2.5-4.0 (vs 1.0 baseline)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 world:
-  grid_size: 200  # Large grid for scaling test
-  food_regen_rate: 0.07  # Balanced with predation
+  grid_size: 100  # Smaller grid for denser population
+  food_regen_rate: 0.5  # Ambient food for survival
   food_max: 100.0
-  initial_food_density: 0.5  # More initial food for establishment
+  initial_food_density: 0.7  # Standard
 
 organisms:
-  initial_population: 600  # Enough to survive predation pressure
-  initial_energy: 100.0
-  reproduction_cost: 40.0  # Increased from 30 for more turnover
-  reproduction_threshold: 70.0  # Increased from 60 for pressure
-  metabolism_base: 0.7  # Moderate pressure
-  food_energy: 25.0  # Reduced from 30 for scarcity
-  move_cost: 0.3  # Increased from 0.2
+  initial_population: 500  # Start near cap for faster selection
+  initial_energy: 120.0  # More starting energy
+  reproduction_cost: 30.0  # Lower for easier reproduction
+  reproduction_threshold: 50.0  # Lower threshold
+  metabolism_base: 0.5  # Moderate pressure
+  food_energy: 25.0  # Standard
+  move_cost: 0.2  # Lower move cost
 
 neural:
-  # 38 inputs: 24 base + 8 spatial memory + 3 temporal + 3 social
-  n_inputs: 38
-  # 12 outputs: 8 move + eat + reproduce + attack + signal + wait + danger + food
-  n_outputs: 12
+  # 75 inputs: 24 base + 8 spatial + 3 temporal + 3 social + 10 sequential + 12 predator + 15 cooperation
+  n_inputs: 75
+  # 15 outputs: 4 move + eat + reproduce + attack + signal + wait + 2 social + 4 cooperation
+  n_outputs: 15
   use_instincts: false  # Disabled for brain evolution
 
 evolution:
   mutation_rate: 0.10
   mutation_strength: 0.3
-  add_neuron_rate: 0.50  # Very high rate for brain growth (cognitive tasks)
+  add_neuron_rate: 0.50  # High rate - penalty caps growth
   add_connection_rate: 0.30  # High rate for complexity
 
 safety:
-  max_population: 1500  # Maintains selective pressure
+  max_population: 900  # Lower cap = continuous selection pressure
   max_energy: 500.0
   max_age: 5000
-  max_neurons: 50
+  max_neurons: 30
 
 logging:
   checkpoint_interval: 500
@@ -61,10 +62,10 @@ logging:
 # Fase 2 Week 1: Ecology - PREDATION
 predation:
   enabled: true  # Creates selective pressure for brain growth
-  damage_multiplier: 15.0  # High damage (~7 hits to kill)
-  size_energy_multiplier: 20.0  # Good reward for kills
+  damage_multiplier: 10.0  # Moderate damage
+  size_energy_multiplier: 25.0  # Good reward for kills
   stored_energy_fraction: 0.5  # Get half of victim's energy
-  attack_cooldown: 2  # Can attack frequently
+  attack_cooldown: 3  # Slightly less frequent attacks
 
 # Fase 2 Week 1: Ecology - SEASONS
 seasons:
@@ -109,3 +110,26 @@ reproduction:
 # Fase 2 Week 5: Analysis & Export
 # Diversity metrics tracked every 100 steps
 # Survival analysis records all deaths automatically
+
+# B3: Large Prey and Cooperation System
+large_prey:
+  enabled: true  # Creates cooperative hunting pressure
+  max_large_prey: 2  # Maximum concurrent large prey
+  spawn_chance: 0.001  # ~1 spawn per 1000 steps
+  min_population: 50  # Minimum population for spawning
+
+# Phase 1: Foraging Memory - Food Patches
+food_patches:
+  enabled: true
+  patch_count: 25  # Many patches to cover grid
+  initial_capacity: 120.0  # Strong food source
+  depletion_rate: 3.0  # Slower depletion
+  regeneration_rate: 1.5  # Faster regen
+  regeneration_time: 150  # Shorter regen delay
+  min_distance: 8  # Allow denser placement
+
+# Phase 1: Behavior Tracking
+behavior_tracking:
+  enabled: true
+  sample_rate: 10
+  max_tracked: 200

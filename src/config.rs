@@ -2,7 +2,7 @@
 //!
 //! Supports YAML configuration files with sensible defaults.
 
-use crate::ecology::{DepletionConfig, FoodConfig, PredationConfig, SeasonsConfig, TerrainConfig};
+use crate::ecology::{DepletionConfig, FoodConfig, LargePreyConfig, PredationConfig, SeasonsConfig, TerrainConfig};
 use crate::genetics::sex::SexualReproductionConfig;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -30,6 +30,14 @@ pub struct Config {
     // Fase 2 Week 3-4: Genetics
     #[serde(default)]
     pub reproduction: SexualReproductionConfig,
+    // B3: Large Prey and Cooperation
+    #[serde(default)]
+    pub large_prey: LargePreyConfig,
+    // Phase 1: Foraging Memory
+    #[serde(default)]
+    pub food_patches: FoodPatchesConfig,
+    #[serde(default)]
+    pub behavior_tracking: BehaviorTrackingConfig,
 }
 
 /// World/environment configuration
@@ -112,6 +120,50 @@ pub struct LoggingConfig {
     pub log_level: String,
 }
 
+/// Food patches configuration for foraging memory
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FoodPatchesConfig {
+    pub enabled: bool,
+    pub patch_count: usize,
+    pub initial_capacity: f32,
+    pub depletion_rate: f32,
+    pub regeneration_rate: f32,
+    pub regeneration_time: u64,
+    pub min_distance: u8,
+}
+
+impl Default for FoodPatchesConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            patch_count: 8,
+            initial_capacity: 80.0,
+            depletion_rate: 5.0,
+            regeneration_rate: 0.5,
+            regeneration_time: 200,
+            min_distance: 10,
+        }
+    }
+}
+
+/// Behavior tracking configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BehaviorTrackingConfig {
+    pub enabled: bool,
+    pub sample_rate: u64,
+    pub max_tracked: usize,
+}
+
+impl Default for BehaviorTrackingConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            sample_rate: 10,
+            max_tracked: 200,
+        }
+    }
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -127,6 +179,9 @@ impl Default for Config {
             terrain: TerrainConfig::default(),
             depletion: DepletionConfig::default(),
             reproduction: SexualReproductionConfig::default(),
+            large_prey: LargePreyConfig::default(),
+            food_patches: FoodPatchesConfig::default(),
+            behavior_tracking: BehaviorTrackingConfig::default(),
         }
     }
 }
@@ -159,10 +214,10 @@ impl Default for OrganismConfig {
 impl Default for NeuralConfig {
     fn default() -> Self {
         Self {
-            // 38 inputs: 24 base + 8 spatial memory + 3 temporal + 3 social
-            n_inputs: 38,
-            // 12 outputs: 8 movement + eat + reproduce + attack + signal + wait + signal_danger + signal_food
-            n_outputs: 12,
+            // 75 inputs: 24 base + 8 spatial + 3 temporal + 3 social + 10 sequential + 12 predator + 15 cooperation
+            n_inputs: 75,
+            // 15 outputs: 4 movement + eat + reproduce + attack + signal + wait + 2 social + 3 cooperation
+            n_outputs: 15,
             use_instincts: false, // Instincts prevent brain evolution
         }
     }

@@ -2,10 +2,13 @@
 
 use crate::config::Config;
 use crate::ecology::food_types::DietSpecialization;
+use crate::ecology::large_prey::{CooperationSignal, TrustRelationship};
+use crate::ecology::predation::PredatorObservation;
 use crate::genetics::Sex;
 use crate::grid::{FoodGrid, SpatialIndex};
 use crate::neural::NeuralNet;
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, VecDeque};
 
 /// Unique organism identifier
 pub type OrganismId = u64;
@@ -28,6 +31,11 @@ pub enum Action {
     // Social Communication actions (Cognitive Tasks)
     SignalDanger,   // Warn nearby organisms of predators
     SignalFood,     // Signal rich food source found
+    // B3: Multi-Agent Coordination actions
+    ProposeCooperation,  // Propose cooperative hunt
+    AcceptCooperation,   // Accept cooperation proposal
+    RejectCooperation,   // Reject cooperation proposal
+    AttackLargePrey,     // Attack large prey (requires 2+ attackers)
 }
 
 /// Result of an action attempt
@@ -79,6 +87,51 @@ pub struct CognitiveInputs {
     pub signal_danger: f32,      // 1.0 if nearby organism signals danger
     pub signal_food: f32,        // 1.0 if nearby organism signals food found
     pub signal_help: f32,        // 1.0 if nearby organism signals help needed
+
+    // B1: Sequential Memory (Path Tracking) - 10 new inputs
+    pub loop_detected: f32,      // 1.0 if organism visited same position twice recently
+    pub oscillation: f32,        // 1.0 if A-B-A pattern detected
+    pub path_entropy: f32,       // 0.0-1.0, diversity of movement directions
+    pub movement_bias_x: f32,    // -1.0 to +1.0, tendency to move E/W
+    pub movement_bias_y: f32,    // -1.0 to +1.0, tendency to move N/S
+    // Recent directions (one-hot encoded): N, E, S, W, None
+    pub recent_dir_n: f32,       // 1.0 if last move was North
+    pub recent_dir_e: f32,       // 1.0 if last move was East
+    pub recent_dir_s: f32,       // 1.0 if last move was South
+    pub recent_dir_w: f32,       // 1.0 if last move was West
+    pub recent_dir_none: f32,    // 1.0 if no recent movement
+
+    // B2: Pattern Recognition (Predator Strategies) - 12 new inputs
+    pub pred_movement_variance: f32,     // Predator movement unpredictability (0-1)
+    pub pred_speed: f32,                 // Predator average speed (0-1 normalized)
+    pub pred_direction_consistency: f32, // How consistent is predator's direction (0-1)
+    // Strategy classification (one-hot): Random, Patrol, Chase, Ambush
+    pub pred_strategy_random: f32,
+    pub pred_strategy_patrol: f32,
+    pub pred_strategy_chase: f32,
+    pub pred_strategy_ambush: f32,
+    pub pred_classification_confidence: f32, // Confidence in classification (0-1)
+    pub pred_approach_angle: f32,        // How directly predator approaches (0-1)
+    pub pred_relative_speed: f32,        // Speed relative to self (-1 to +1)
+    pub pred_time_observed: f32,         // How long we've been tracking (0-1)
+    pub pred_threat_level: f32,          // Combined threat assessment (0-1)
+
+    // B3: Multi-Agent Coordination - 15 new inputs
+    pub large_prey_nearby: f32,          // 1.0 if large prey in sensing range
+    pub large_prey_distance: f32,        // Normalized distance to nearest large prey (0-1)
+    pub large_prey_health: f32,          // Normalized health of target (0-1)
+    pub large_prey_attackers: f32,       // Current number of attackers (normalized)
+    pub large_prey_need: f32,            // How many more attackers needed (0-1)
+    pub partner_nearby: f32,             // 1.0 if potential cooperation partner nearby
+    pub partner_trust: f32,              // Trust level with nearest partner (-1 to +1)
+    pub partner_distance: f32,           // Distance to nearest potential partner (0-1)
+    pub cooperation_proposed: f32,       // 1.0 if we received a cooperation proposal
+    pub cooperation_active: f32,         // 1.0 if currently cooperating
+    pub hunt_success_rate: f32,          // Our recent success rate at cooperative hunts (0-1)
+    pub partner_fitness: f32,            // Estimated fitness of potential partner (0-1)
+    pub own_attack_power: f32,           // Our own attack capability (0-1)
+    pub time_since_last_coop: f32,       // Normalized time since last cooperation (0-1)
+    pub prey_escape_urgency: f32,        // How close prey is to escaping (0-1)
 }
 
 /// An organism in the simulation
@@ -136,6 +189,23 @@ pub struct Organism {
     // Cognitive Tasks: Social Communication
     pub social_signal: SocialSignal,
     pub signal_cooldown: u32,
+
+    // B1: Sequential Memory - Path History (max 5 positions)
+    #[serde(skip)]
+    pub path_history: VecDeque<(u8, u8)>,
+
+    // B2: Pattern Recognition - Observed Predators (max 10 tracked)
+    #[serde(skip)]
+    pub observed_predators: HashMap<OrganismId, PredatorObservation>,
+
+    // B3: Multi-Agent Coordination
+    pub cooperation_signal: CooperationSignal,
+    #[serde(skip)]
+    pub trust_relationships: HashMap<OrganismId, TrustRelationship>,
+    pub current_hunt_target: Option<u64>,  // Large prey ID being targeted
+    pub coop_successes: u32,               // Lifetime cooperative hunt successes
+    pub coop_failures: u32,                // Lifetime cooperative hunt failures
+    pub last_coop_time: u64,               // Time of last cooperation
 }
 
 /// Social signal types for communication between organisms
@@ -184,11 +254,154 @@ impl Organism {
             mate_cooldown: 0,
             social_signal: SocialSignal::None,
             signal_cooldown: 0,
+            path_history: VecDeque::with_capacity(5),
+            observed_predators: HashMap::with_capacity(10),
+            cooperation_signal: CooperationSignal::None,
+            trust_relationships: HashMap::with_capacity(10),
+            current_hunt_target: None,
+            coop_successes: 0,
+            coop_failures: 0,
+            last_coop_time: 0,
         }
     }
 
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // B1: SEQUENTIAL MEMORY (Path Tracking) Methods
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    /// Record current position in path history (called after movement)
+    pub fn record_movement(&mut self) {
+        let pos = (self.x, self.y);
+
+        // Keep max 5 positions
+        if self.path_history.len() >= 5 {
+            self.path_history.pop_front();
+        }
+        self.path_history.push_back(pos);
+    }
+
+    /// Detect if organism has visited the same position twice in recent history
+    pub fn detect_loop(&self) -> bool {
+        if self.path_history.len() < 2 {
+            return false;
+        }
+
+        let current = (self.x, self.y);
+
+        // Check if current position appears in history (excluding most recent)
+        for i in 0..self.path_history.len().saturating_sub(1) {
+            if self.path_history[i] == current {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Detect A-B-A oscillation pattern (back-and-forth movement)
+    pub fn detect_oscillation(&self) -> bool {
+        if self.path_history.len() < 3 {
+            return false;
+        }
+
+        let len = self.path_history.len();
+        // Check if position[len-1] == position[len-3] (A-B-A pattern)
+        self.path_history[len - 1] == self.path_history[len - 3]
+    }
+
+    /// Calculate path entropy (diversity of movement directions)
+    /// Returns 0.0-1.0, where 1.0 = highly diverse, 0.0 = all same direction
+    pub fn calculate_path_entropy(&self) -> f32 {
+        if self.path_history.len() < 2 {
+            return 0.5; // Neutral if not enough history
+        }
+
+        // Count direction changes: N, E, S, W
+        let mut dir_counts = [0u32; 4]; // N, E, S, W
+
+        for i in 1..self.path_history.len() {
+            let (prev_x, prev_y) = self.path_history[i - 1];
+            let (curr_x, curr_y) = self.path_history[i];
+
+            let dx = curr_x as i16 - prev_x as i16;
+            let dy = curr_y as i16 - prev_y as i16;
+
+            // Classify direction
+            if dy < 0 { dir_counts[0] += 1; } // North
+            if dx > 0 { dir_counts[1] += 1; } // East
+            if dy > 0 { dir_counts[2] += 1; } // South
+            if dx < 0 { dir_counts[3] += 1; } // West
+        }
+
+        // Calculate Shannon entropy
+        let total: u32 = dir_counts.iter().sum();
+        if total == 0 {
+            return 0.5;
+        }
+
+        let mut entropy = 0.0f32;
+        for &count in &dir_counts {
+            if count > 0 {
+                let p = count as f32 / total as f32;
+                entropy -= p * p.log2();
+            }
+        }
+
+        // Normalize to 0-1 (max entropy for 4 categories is log2(4) = 2)
+        (entropy / 2.0).clamp(0.0, 1.0)
+    }
+
+    /// Calculate movement bias (tendency to move in X/Y direction)
+    /// Returns (bias_x, bias_y) where -1.0 = West/North, +1.0 = East/South
+    pub fn calculate_movement_bias(&self) -> (f32, f32) {
+        if self.path_history.len() < 2 {
+            return (0.0, 0.0);
+        }
+
+        let mut total_dx = 0i32;
+        let mut total_dy = 0i32;
+
+        for i in 1..self.path_history.len() {
+            let (prev_x, prev_y) = self.path_history[i - 1];
+            let (curr_x, curr_y) = self.path_history[i];
+
+            total_dx += curr_x as i32 - prev_x as i32;
+            total_dy += curr_y as i32 - prev_y as i32;
+        }
+
+        let moves = (self.path_history.len() - 1) as f32;
+        let bias_x = (total_dx as f32 / moves).clamp(-1.0, 1.0);
+        let bias_y = (total_dy as f32 / moves).clamp(-1.0, 1.0);
+
+        (bias_x, bias_y)
+    }
+
+    /// Get the last movement direction as one-hot encoded (N, E, S, W, None)
+    pub fn get_recent_direction(&self) -> [f32; 5] {
+        if self.path_history.len() < 2 {
+            return [0.0, 0.0, 0.0, 0.0, 1.0]; // None
+        }
+
+        let len = self.path_history.len();
+        let (prev_x, prev_y) = self.path_history[len - 2];
+        let (curr_x, curr_y) = self.path_history[len - 1];
+
+        let dx = curr_x as i16 - prev_x as i16;
+        let dy = curr_y as i16 - prev_y as i16;
+
+        // One-hot encode: [N, E, S, W, None]
+        let mut result = [0.0f32; 5];
+
+        if dy < 0 { result[0] = 1.0; } // North
+        else if dx > 0 { result[1] = 1.0; } // East
+        else if dy > 0 { result[2] = 1.0; } // South
+        else if dx < 0 { result[3] = 1.0; } // West
+        else { result[4] = 1.0; } // None (no movement)
+
+        result
+    }
+
     /// Sense the environment and return input vector for neural network
-    /// Returns 38 inputs: 24 base + 8 memory + 3 temporal + 3 social
+    /// Returns 75 inputs: 24 base + 8 memory + 3 temporal + 3 social + 10 sequential + 12 predator + 15 cooperation
     pub fn sense(
         &self,
         food_grid: &FoodGrid,
@@ -197,8 +410,8 @@ impl Organism {
         time: u64,
         config: &Config,
         cognitive: &CognitiveInputs,
-    ) -> [f32; 38] {
-        let mut inputs = [0.0f32; 38];
+    ) -> [f32; 75] {
+        let mut inputs = [0.0f32; 75];
         let sense_range = 3u8;
 
         // Food in 4 directions (normalized)
@@ -296,22 +509,65 @@ impl Organism {
         inputs[36] = cognitive.signal_food;       // Food found signal nearby
         inputs[37] = cognitive.signal_help;       // Help needed signal nearby
 
+        // B1: Sequential Memory (Path Tracking)
+        inputs[38] = cognitive.loop_detected;     // Loop detected (visited same pos twice)
+        inputs[39] = cognitive.oscillation;       // A-B-A oscillation pattern
+        inputs[40] = cognitive.path_entropy;      // Movement diversity (0-1)
+        inputs[41] = cognitive.movement_bias_x;   // Tendency E/W (-1 to +1)
+        inputs[42] = cognitive.movement_bias_y;   // Tendency N/S (-1 to +1)
+        inputs[43] = cognitive.recent_dir_n;      // Last move was North
+        inputs[44] = cognitive.recent_dir_e;      // Last move was East
+        inputs[45] = cognitive.recent_dir_s;      // Last move was South
+        inputs[46] = cognitive.recent_dir_w;      // Last move was West
+        inputs[47] = cognitive.recent_dir_none;   // No recent movement
+
+        // B2: Pattern Recognition (Predator Strategies)
+        inputs[48] = cognitive.pred_movement_variance;      // Predator unpredictability
+        inputs[49] = cognitive.pred_speed;                  // Predator speed (normalized)
+        inputs[50] = cognitive.pred_direction_consistency;  // Direction consistency
+        inputs[51] = cognitive.pred_strategy_random;        // Strategy: Random
+        inputs[52] = cognitive.pred_strategy_patrol;        // Strategy: Patrol
+        inputs[53] = cognitive.pred_strategy_chase;         // Strategy: Chase
+        inputs[54] = cognitive.pred_strategy_ambush;        // Strategy: Ambush
+        inputs[55] = cognitive.pred_classification_confidence; // Classification confidence
+        inputs[56] = cognitive.pred_approach_angle;         // Approach angle
+        inputs[57] = cognitive.pred_relative_speed;         // Relative speed
+        inputs[58] = cognitive.pred_time_observed;          // Observation duration
+        inputs[59] = cognitive.pred_threat_level;           // Combined threat level
+
+        // B3: Multi-Agent Coordination
+        inputs[60] = cognitive.large_prey_nearby;           // Large prey present
+        inputs[61] = cognitive.large_prey_distance;         // Distance to large prey
+        inputs[62] = cognitive.large_prey_health;           // Large prey health
+        inputs[63] = cognitive.large_prey_attackers;        // Current attackers
+        inputs[64] = cognitive.large_prey_need;             // Attackers still needed
+        inputs[65] = cognitive.partner_nearby;              // Potential partner nearby
+        inputs[66] = cognitive.partner_trust;               // Trust with partner
+        inputs[67] = cognitive.partner_distance;            // Distance to partner
+        inputs[68] = cognitive.cooperation_proposed;        // Received proposal
+        inputs[69] = cognitive.cooperation_active;          // Currently cooperating
+        inputs[70] = cognitive.hunt_success_rate;           // Our success rate
+        inputs[71] = cognitive.partner_fitness;             // Partner's fitness
+        inputs[72] = cognitive.own_attack_power;            // Our attack power
+        inputs[73] = cognitive.time_since_last_coop;        // Time since last coop
+        inputs[74] = cognitive.prey_escape_urgency;         // Prey escape urgency
+
         inputs
     }
 
     /// Process inputs through neural network
     #[inline]
-    pub fn think(&mut self, inputs: &[f32; 38]) -> [f32; 12] {
+    pub fn think(&mut self, inputs: &[f32; 75]) -> [f32; 15] {
         let outputs = self.brain.forward(inputs);
-        let mut result = [0.0f32; 12];
-        for (i, &val) in outputs.iter().take(12).enumerate() {
+        let mut result = [0.0f32; 15];
+        for (i, &val) in outputs.iter().take(15).enumerate() {
             result[i] = val;
         }
         result
     }
 
-    /// Decide action based on neural network outputs (12 outputs)
-    pub fn decide_action(&self, outputs: &[f32; 12]) -> Action {
+    /// Decide action based on neural network outputs (15 outputs)
+    pub fn decide_action(&self, outputs: &[f32; 15]) -> Action {
         // Find max output index
         let mut max_idx = 0;
         let mut max_val = outputs[0];
@@ -333,8 +589,12 @@ impl Organism {
             6 => Action::Attack,
             7 => Action::Signal(outputs[7]),
             8 => Action::Wait,
-            9 => Action::SignalDanger,   // NEW: Social communication
-            10 => Action::SignalFood,    // NEW: Social communication
+            9 => Action::SignalDanger,   // Social communication
+            10 => Action::SignalFood,    // Social communication
+            11 => Action::ProposeCooperation,  // B3: Cooperation actions
+            12 => Action::AcceptCooperation,
+            13 => Action::RejectCooperation,
+            14 => Action::AttackLargePrey,
             _ => Action::Wait,
         }
     }
@@ -391,10 +651,34 @@ impl Organism {
 
         // Metabolic cost
         let base_cost = config.organisms.metabolism_base;
-        let size_cost = self.size * 0.5;
-        let brain_cost = 0.0; // Removed: neurons accumulate neutrally (drift)
+        let size_cost = self.size * 0.1;
 
-        self.energy -= base_cost + size_cost + brain_cost;
+        // Brain complexity BONUS with HARD CAP + PENALTY SYSTEM
+        // Prevents runaway growth while rewarding moderate complexity
+        // Sweet spot: 5-7 layers
+        let brain_complexity = self.brain.complexity();
+        let brain_bonus = if brain_complexity == 0 {
+            0.0  // No brain: no bonus
+        } else if brain_complexity <= 7 {
+            // BENEFIT ZONE: -0.03 per layer (max -0.21)
+            0.03 * brain_complexity as f32
+        } else if brain_complexity <= 10 {
+            // DIMINISHING ZONE: -0.21 + -0.01 per layer (max -0.24)
+            0.21 + 0.01 * (brain_complexity - 7) as f32
+        } else if brain_complexity <= 12 {
+            // NEUTRAL ZONE: capped at -0.24
+            0.24
+        } else {
+            // AGGRESSIVE PENALTY ZONE: 0.05 penalty per extra layer
+            // 13 layers: 0.19
+            // 15 layers: 0.09
+            // 17 layers: -0.01 (penalty starts!)
+            // 20 layers: -0.16 (strong penalty)
+            (0.24 - 0.05 * (brain_complexity - 12) as f32).max(-0.30)
+        };
+
+        // Ensure minimum metabolism of 0.08 to maintain population stability
+        self.energy -= (base_cost + size_cost - brain_bonus).max(0.08);
 
         // Health decay when starving
         if self.energy < 0.0 {
@@ -507,6 +791,14 @@ impl Organism {
             mate_cooldown: 0,
             social_signal: SocialSignal::None,
             signal_cooldown: 0,
+            path_history: VecDeque::with_capacity(5),
+            observed_predators: HashMap::with_capacity(10),
+            cooperation_signal: CooperationSignal::None,
+            trust_relationships: HashMap::with_capacity(10),
+            current_hunt_target: None,
+            coop_successes: 0,
+            coop_failures: 0,
+            last_coop_time: 0,
         };
 
         // Mutate diet slightly
@@ -536,13 +828,38 @@ impl Organism {
     }
 
     /// Get fitness score (for selection/crossover)
+    /// HARSH MODE: Brain complexity and cooperation are heavily rewarded
     pub fn fitness(&self) -> f32 {
         let survival_score = self.age as f32;
         let reproduction_score = self.offspring_count as f32 * 100.0;
         let food_score = self.food_eaten as f32 * 10.0;
         let predation_score = self.kills as f32 * 50.0; // Reward successful hunting
 
-        survival_score + reproduction_score + food_score + predation_score
+        // HARSH MODE: Strong bonus for brain complexity
+        // +100 fitness per hidden layer (was 50) - makes complex brains highly advantageous
+        let brain_complexity = self.brain.complexity() as f32;
+        let brain_bonus = brain_complexity * 100.0;
+
+        // HARSH MODE: Bonus for successful cooperation
+        // +150 per successful cooperative hunt (was 75) - makes cooperation essential
+        let coop_bonus = self.coop_successes as f32 * 150.0;
+
+        // HARSH MODE: Penalty for failed cooperation attempts
+        // -50 per failed solo attack on large prey - discourages foolish behavior
+        let coop_penalty = self.coop_failures as f32 * 50.0;
+
+        // HARSH MODE: Efficiency bonus based on food eaten vs age
+        // Organisms that eat more efficiently get higher fitness
+        let efficiency_bonus = if self.age > 0 {
+            (self.food_eaten as f32 / self.age as f32) * 50.0
+        } else {
+            0.0
+        };
+
+        let base_fitness = survival_score + reproduction_score + food_score + predation_score;
+        let harsh_adjustments = brain_bonus + coop_bonus + efficiency_bonus - coop_penalty;
+
+        (base_fitness + harsh_adjustments).max(0.0)
     }
 }
 
@@ -577,7 +894,7 @@ mod tests {
 
         let inputs = org.sense(&food_grid, &spatial_index, &organisms, 0, &config, &cognitive);
 
-        assert_eq!(inputs.len(), 38); // 24 base + 8 memory + 3 temporal + 3 social
+        assert_eq!(inputs.len(), 75); // 24 base + 8 memory + 3 temporal + 3 social + 10 sequential + 12 predator + 15 cooperation
         assert!(inputs.iter().all(|&x| x.is_finite()));
     }
 
@@ -586,7 +903,7 @@ mod tests {
         let config = test_config();
         let mut org = Organism::new(1, 1, 40, 40, &config);
 
-        let inputs = [0.5f32; 38]; // 38 inputs with cognitive sensors
+        let inputs = [0.5f32; 75]; // 75 inputs with cognitive + sequential + predator + cooperation
         let outputs = org.think(&inputs);
         let action = org.decide_action(&outputs);
 
@@ -602,7 +919,11 @@ mod tests {
             | Action::Signal(_)
             | Action::Wait
             | Action::SignalDanger
-            | Action::SignalFood => {}
+            | Action::SignalFood
+            | Action::ProposeCooperation
+            | Action::AcceptCooperation
+            | Action::RejectCooperation
+            | Action::AttackLargePrey => {}
         }
     }
 
