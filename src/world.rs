@@ -563,6 +563,8 @@ impl World {
             .collect();
 
         // Parallel sensing and decision making
+        let use_enhanced = self.config.sensory.enhanced_senses && self.config.neural.n_inputs == 95;
+
         organism_refs
             .par_iter()
             .map(|&(idx, org)| {
@@ -574,24 +576,47 @@ impl World {
                     time_to_season,
                 );
 
-                let inputs = org.sense(
-                    &self.food_grid,
-                    &self.spatial_index,
-                    &self.organisms,
-                    self.time,
-                    &self.config,
-                    &cognitive,
-                );
+                if use_enhanced {
+                    // Enhanced sensing with 95 inputs
+                    let inputs = org.sense_enhanced(
+                        &self.food_grid,
+                        &self.spatial_index,
+                        &self.organisms,
+                        self.time,
+                        &self.config,
+                        &cognitive,
+                    );
 
-                // Forward pass through neural network (75 inputs -> 15 outputs)
-                let outputs = org.brain.forward(&inputs);
-                let mut output_array = [0.0f32; 15];
-                for (i, &val) in outputs.iter().take(15).enumerate() {
-                    output_array[i] = val;
+                    // Forward pass through neural network (95 inputs -> 15 outputs)
+                    let outputs = org.brain.forward(&inputs);
+                    let mut output_array = [0.0f32; 15];
+                    for (i, &val) in outputs.iter().take(15).enumerate() {
+                        output_array[i] = val;
+                    }
+
+                    let action = org.decide_action(&output_array);
+                    (idx, action, inputs.to_vec())
+                } else {
+                    // Legacy sensing with 75 inputs
+                    let inputs = org.sense(
+                        &self.food_grid,
+                        &self.spatial_index,
+                        &self.organisms,
+                        self.time,
+                        &self.config,
+                        &cognitive,
+                    );
+
+                    // Forward pass through neural network (75 inputs -> 15 outputs)
+                    let outputs = org.brain.forward(&inputs);
+                    let mut output_array = [0.0f32; 15];
+                    for (i, &val) in outputs.iter().take(15).enumerate() {
+                        output_array[i] = val;
+                    }
+
+                    let action = org.decide_action(&output_array);
+                    (idx, action, inputs.to_vec())
                 }
-
-                let action = org.decide_action(&output_array);
-                (idx, action, inputs.to_vec())
             })
             .collect()
     }
@@ -674,6 +699,9 @@ impl World {
              cooperation_proposed, cooperation_active, hunt_success_rate, partner_fitness,
              own_attack_power, time_since_last_coop, prey_escape_urgency) = self.get_cooperation_inputs(org);
 
+        // Phase 2 Feature 1: Enhanced Sensory System
+        let (visions, smells, sounds) = self.calculate_enhanced_senses(org);
+
         CognitiveInputs {
             depletion_n: depletions[0],
             depletion_ne: depletions[1],
@@ -729,7 +757,260 @@ impl World {
             own_attack_power,
             time_since_last_coop,
             prey_escape_urgency,
+            // Phase 2 Feature 1: Enhanced Sensory inputs
+            vision_n: visions[0],
+            vision_ne: visions[1],
+            vision_e: visions[2],
+            vision_se: visions[3],
+            vision_s: visions[4],
+            vision_sw: visions[5],
+            vision_w: visions[6],
+            vision_nw: visions[7],
+            smell_n: smells[0],
+            smell_ne: smells[1],
+            smell_e: smells[2],
+            smell_se: smells[3],
+            smell_s: smells[4],
+            smell_sw: smells[5],
+            smell_w: smells[6],
+            smell_nw: smells[7],
+            sound_n: sounds[0],
+            sound_e: sounds[1],
+            sound_s: sounds[2],
+            sound_w: sounds[3],
         }
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // PHASE 2 FEATURE 1: ENHANCED SENSORY SYSTEM
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    /// Get day/night multiplier for vision (1.0 = day, night_vision_penalty = night)
+    fn get_day_multiplier(&self) -> f32 {
+        if !self.config.day_night.enabled {
+            return 1.0;
+        }
+
+        let cycle_pos = self.time % self.config.day_night.cycle_length;
+        let half_cycle = self.config.day_night.cycle_length / 2;
+
+        if cycle_pos < half_cycle {
+            // Day phase
+            1.0
+        } else {
+            // Night phase
+            self.config.day_night.night_vision_penalty
+        }
+    }
+
+    /// Get olfaction multiplier (1.0 = day, night_olfaction_bonus = night)
+    fn get_olfaction_multiplier(&self) -> f32 {
+        if !self.config.day_night.enabled {
+            return 1.0;
+        }
+
+        let cycle_pos = self.time % self.config.day_night.cycle_length;
+        let half_cycle = self.config.day_night.cycle_length / 2;
+
+        if cycle_pos < half_cycle {
+            // Day phase: normal smell
+            1.0
+        } else {
+            // Night phase: enhanced smell
+            self.config.day_night.night_olfaction_bonus
+        }
+    }
+
+    /// Calculate multi-resolution vision in a direction
+    /// Returns 0.0-1.0 representing food availability weighted by distance
+    fn calculate_vision(
+        &self,
+        org: &Organism,
+        dx: i8,
+        dy: i8,
+        day_multiplier: f32,
+    ) -> f32 {
+        if !self.config.sensory.enhanced_senses {
+            // Fallback to basic sensing when enhanced senses disabled
+            let range = 3u8;
+            let food_scale = self.config.world.food_max * range as f32;
+            return self.food_grid.sense_direction(org.x, org.y, dx, dy, range) / food_scale;
+        }
+
+        let fovea_range = self.config.sensory.vision_fovea_range;
+        let peripheral_range = self.config.sensory.vision_peripheral_range;
+        let grid_size = self.config.world.grid_size as i16;
+
+        let mut total = 0.0f32;
+
+        // Fovea: detailed food sensing (high resolution)
+        for dist in 1..=fovea_range {
+            let nx = org.x as i16 + dx as i16 * dist as i16;
+            let ny = org.y as i16 + dy as i16 * dist as i16;
+
+            if nx >= 0 && nx < grid_size && ny >= 0 && ny < grid_size {
+                let food = self.food_grid.get(nx as u8, ny as u8);
+                // Closer cells contribute more, normalized by food_max
+                total += (food / self.config.world.food_max) * day_multiplier / dist as f32;
+            }
+        }
+
+        // Peripheral: presence detection only (low resolution)
+        for dist in (fovea_range + 1)..=peripheral_range {
+            let nx = org.x as i16 + dx as i16 * dist as i16;
+            let ny = org.y as i16 + dy as i16 * dist as i16;
+
+            if nx >= 0 && nx < grid_size && ny >= 0 && ny < grid_size {
+                let food = self.food_grid.get(nx as u8, ny as u8);
+                // Peripheral only detects presence, not amount (reduced weight)
+                let presence = if food > 0.5 { 1.0 } else { 0.0 };
+                total += presence * day_multiplier * 0.3 / dist as f32;
+            }
+        }
+
+        total.min(1.0)
+    }
+
+    /// Calculate olfaction (smell) in a direction
+    /// Returns 0.0-1.0 representing smell intensity based on food tier
+    fn calculate_smell(
+        &self,
+        org: &Organism,
+        dx: i8,
+        dy: i8,
+        olfaction_multiplier: f32,
+    ) -> f32 {
+        if !self.config.sensory.enhanced_senses {
+            return 0.0; // Olfaction disabled when enhanced senses off
+        }
+
+        let range = self.config.sensory.olfaction_range;
+        let grid_size = self.config.world.grid_size as i16;
+
+        let mut total = 0.0f32;
+
+        for dist in 1..=range {
+            let nx = org.x as i16 + dx as i16 * dist as i16;
+            let ny = org.y as i16 + dy as i16 * dist as i16;
+
+            if nx >= 0 && nx < grid_size && ny >= 0 && ny < grid_size {
+                let food = self.food_grid.get(nx as u8, ny as u8);
+
+                if food > 0.1 {
+                    // Get food complexity tier for smell strength
+                    let complexity = self.complexity_grid.get(nx as u8, ny as u8);
+
+                    // Smell intensity by tier (simple=weak, complex=strong)
+                    let smell_strength = if complexity < 0.25 {
+                        0.3 // Simple food: weak smell
+                    } else if complexity < 0.60 {
+                        0.6 // Medium food: moderate smell
+                    } else {
+                        1.0 // Complex food: strong smell
+                    };
+
+                    // Smell decays with distance squared (more realistic)
+                    let dist_factor = 1.0 / (dist as f32 * dist as f32);
+                    total += food / self.config.world.food_max * smell_strength * dist_factor * olfaction_multiplier;
+                }
+            }
+        }
+
+        total.min(1.0)
+    }
+
+    /// Calculate audition (sound) in a direction
+    /// Returns 0.0-1.0 representing sound intensity from nearby organisms
+    fn calculate_sound(
+        &self,
+        org: &Organism,
+        dx: i8,
+        dy: i8,
+    ) -> f32 {
+        if !self.config.sensory.enhanced_senses {
+            return 0.0; // Audition disabled when enhanced senses off
+        }
+
+        let range = self.config.sensory.audition_range;
+        let grid_size = self.config.world.grid_size as i16;
+
+        let mut total = 0.0f32;
+
+        for dist in 1..=range {
+            let nx = org.x as i16 + dx as i16 * dist as i16;
+            let ny = org.y as i16 + dy as i16 * dist as i16;
+
+            if nx >= 0 && nx < grid_size && ny >= 0 && ny < grid_size {
+                // Query organisms in this cell
+                let neighbors = self.spatial_index.get(nx as u8, ny as u8);
+
+                for &idx in neighbors {
+                    if idx < self.organisms.len() && idx != org.id as usize {
+                        let other = &self.organisms[idx];
+                        if other.is_alive() {
+                            // Moving organisms make more noise
+                            let loudness = match other.last_action {
+                                Some(Action::MoveNorth)
+                                | Some(Action::MoveEast)
+                                | Some(Action::MoveSouth)
+                                | Some(Action::MoveWest) => 1.0,
+                                Some(Action::Attack) | Some(Action::AttackLargePrey) => 1.5, // Attacks are loud
+                                _ => 0.3, // Stationary organisms make some noise
+                            };
+
+                            // Sound decays with distance
+                            total += loudness / dist as f32;
+                        }
+                    }
+                }
+            }
+        }
+
+        total.min(1.0)
+    }
+
+    /// Calculate all enhanced sensory inputs for an organism
+    /// Returns (visions[8], smells[8], sounds[4])
+    fn calculate_enhanced_senses(&self, org: &Organism) -> ([f32; 8], [f32; 8], [f32; 4]) {
+        // 8 directions for vision and smell
+        const DIRECTIONS_8: [(i8, i8); 8] = [
+            (0, -1),  // N
+            (1, -1),  // NE
+            (1, 0),   // E
+            (1, 1),   // SE
+            (0, 1),   // S
+            (-1, 1),  // SW
+            (-1, 0),  // W
+            (-1, -1), // NW
+        ];
+
+        // 4 cardinal directions for audition
+        const DIRECTIONS_4: [(i8, i8); 4] = [
+            (0, -1),  // N
+            (1, 0),   // E
+            (0, 1),   // S
+            (-1, 0),  // W
+        ];
+
+        let day_mult = self.get_day_multiplier();
+        let olf_mult = self.get_olfaction_multiplier();
+
+        let mut visions = [0.0f32; 8];
+        let mut smells = [0.0f32; 8];
+        let mut sounds = [0.0f32; 4];
+
+        // Calculate vision and smell in 8 directions
+        for (i, (dx, dy)) in DIRECTIONS_8.iter().enumerate() {
+            visions[i] = self.calculate_vision(org, *dx, *dy, day_mult);
+            smells[i] = self.calculate_smell(org, *dx, *dy, olf_mult);
+        }
+
+        // Calculate sound in 4 cardinal directions
+        for (i, (dx, dy)) in DIRECTIONS_4.iter().enumerate() {
+            sounds[i] = self.calculate_sound(org, *dx, *dy);
+        }
+
+        (visions, smells, sounds)
     }
 
     /// B3: Get cooperation and large prey inputs for an organism

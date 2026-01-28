@@ -36,8 +36,9 @@ organisms:
   move_cost: 0.2  # Lower move cost
 
 neural:
-  # 75 inputs: 24 base + 8 spatial + 3 temporal + 3 social + 10 sequential + 12 predator + 15 cooperation
-  n_inputs: 75
+  # 95 inputs (enhanced): 20 enhanced senses + 75 legacy
+  # Legacy 75: 24 base + 8 spatial + 3 temporal + 3 social + 10 sequential + 12 predator + 15 cooperation
+  n_inputs: 95
   # 15 outputs: 4 move + eat + reproduce + attack + signal + wait + 2 social + 4 cooperation
   n_outputs: 15
   use_instincts: false  # Disabled for brain evolution
@@ -144,7 +145,7 @@ behavior_tracking:
 
 # Database tracking
 database:
-  enabled: false
+  enabled: true
   url: "postgresql://primordial:primordial@localhost/primordial_v2"
   snapshot_interval: 100
   log_learning_events: false
@@ -188,3 +189,22 @@ brain_tax:
   enabled: false           # Temporarily disabled
   threshold: 10
   cost_per_layer: 0.02
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# PHASE 2 FEATURE 1: ENHANCED SENSORY SYSTEM
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# Enhanced Sensory Configuration
+sensory:
+  enhanced_senses: true      # Enable 8-direction vision, olfaction, audition
+  vision_fovea_range: 5      # High-resolution vision range
+  vision_peripheral_range: 10 # Low-resolution peripheral vision
+  olfaction_range: 8         # Smell detection range
+  audition_range: 6          # Sound detection range
+
+# Day/Night Cycle Configuration
+day_night:
+  enabled: true              # Enable day/night cycle
+  cycle_length: 2000         # Steps per complete cycle
+  night_vision_penalty: 0.3  # Vision multiplier at night (0.3 = 30%)
+  night_olfaction_bonus: 1.5 # Smell bonus at night (1.5 = 150%)

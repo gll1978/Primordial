@@ -54,6 +54,11 @@ pub struct Config {
     // Brain tax system - penalizes overly complex brains
     #[serde(default)]
     pub brain_tax: BrainTaxConfig,
+    // Phase 2 Feature 1: Enhanced Sensory System
+    #[serde(default)]
+    pub sensory: SensoryConfig,
+    #[serde(default)]
+    pub day_night: DayNightConfig,
 }
 
 /// Database configuration for individual organism tracking
@@ -168,6 +173,57 @@ impl Default for BrainTaxConfig {
             enabled: true,
             threshold: 10,
             cost_per_layer: 0.01,
+        }
+    }
+}
+
+/// Enhanced sensory system configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SensoryConfig {
+    /// Enable enhanced senses (8-direction vision, olfaction, audition)
+    pub enhanced_senses: bool,
+    /// Vision fovea range (high resolution)
+    pub vision_fovea_range: u8,
+    /// Vision peripheral range (low resolution, presence detection only)
+    pub vision_peripheral_range: u8,
+    /// Olfaction detection range
+    pub olfaction_range: u8,
+    /// Audition detection range
+    pub audition_range: u8,
+}
+
+impl Default for SensoryConfig {
+    fn default() -> Self {
+        Self {
+            enhanced_senses: false,
+            vision_fovea_range: 5,
+            vision_peripheral_range: 10,
+            olfaction_range: 8,
+            audition_range: 6,
+        }
+    }
+}
+
+/// Day/Night cycle configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DayNightConfig {
+    /// Enable day/night cycle
+    pub enabled: bool,
+    /// Steps per complete day/night cycle
+    pub cycle_length: u64,
+    /// Vision multiplier during night (0.0-1.0)
+    pub night_vision_penalty: f32,
+    /// Olfaction multiplier during night (>1.0 for bonus)
+    pub night_olfaction_bonus: f32,
+}
+
+impl Default for DayNightConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            cycle_length: 2000,
+            night_vision_penalty: 0.3,
+            night_olfaction_bonus: 1.5,
         }
     }
 }
@@ -322,6 +378,8 @@ impl Default for Config {
             database: DatabaseConfig::default(),
             cognitive_gate: CognitiveGateConfig::default(),
             brain_tax: BrainTaxConfig::default(),
+            sensory: SensoryConfig::default(),
+            day_night: DayNightConfig::default(),
         }
     }
 }
@@ -355,7 +413,8 @@ impl Default for OrganismConfig {
 impl Default for NeuralConfig {
     fn default() -> Self {
         Self {
-            // 75 inputs: 24 base + 8 spatial + 3 temporal + 3 social + 10 sequential + 12 predator + 15 cooperation
+            // 75 inputs (legacy): 24 base + 8 spatial + 3 temporal + 3 social + 10 sequential + 12 predator + 15 cooperation
+            // 95 inputs (enhanced): +8 vision + 8 olfaction + 4 audition
             n_inputs: 75,
             // 15 outputs: 4 movement + eat + reproduce + attack + signal + wait + 2 social + 3 cooperation
             n_outputs: 15,

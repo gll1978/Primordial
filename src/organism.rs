@@ -68,6 +68,43 @@ pub enum DeathCause {
 /// These inputs require integration over time/space - forcing hidden layer evolution
 #[derive(Debug, Clone, Default)]
 pub struct CognitiveInputs {
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // PHASE 2 FEATURE 1: ENHANCED SENSORY SYSTEM (+20 inputs)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    // Enhanced Vision (8 directions) - replaces basic 4-direction food sensing
+    // Multi-resolution: fovea (high detail) + peripheral (presence only)
+    pub vision_n: f32,
+    pub vision_ne: f32,
+    pub vision_e: f32,
+    pub vision_se: f32,
+    pub vision_s: f32,
+    pub vision_sw: f32,
+    pub vision_w: f32,
+    pub vision_nw: f32,
+
+    // Olfaction System (8 directions)
+    // Smell gradients based on food tier (simple=weak, complex=strong)
+    pub smell_n: f32,
+    pub smell_ne: f32,
+    pub smell_e: f32,
+    pub smell_se: f32,
+    pub smell_s: f32,
+    pub smell_sw: f32,
+    pub smell_w: f32,
+    pub smell_nw: f32,
+
+    // Audition System (4 cardinal directions)
+    // Detects movement of nearby organisms
+    pub sound_n: f32,
+    pub sound_e: f32,
+    pub sound_s: f32,
+    pub sound_w: f32,
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // EXISTING COGNITIVE INPUTS
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
     // Spatial Memory: Depletion in 8 directions (recently eaten cells)
     pub depletion_n: f32,
     pub depletion_ne: f32,
@@ -423,7 +460,7 @@ impl Organism {
         result
     }
 
-    /// Sense the environment and return input vector for neural network
+    /// Sense the environment and return input vector for neural network (legacy 75 inputs)
     /// Returns 75 inputs: 24 base + 8 memory + 3 temporal + 3 social + 10 sequential + 12 predator + 15 cooperation
     pub fn sense(
         &self,
@@ -578,9 +615,226 @@ impl Organism {
         inputs
     }
 
-    /// Process inputs through neural network
+    /// Sense the environment with enhanced sensory system (95 inputs)
+    /// Returns 95 inputs: 20 enhanced senses + 75 legacy inputs
+    /// Mapping:
+    ///   [0-7]   Enhanced Vision 8 directions
+    ///   [8-15]  Olfaction 8 directions
+    ///   [16-19] Audition 4 directions
+    ///   [20-21] Threats, Mates
+    ///   [22-25] Energy, Health, Size, Age
+    ///   [26-30] Memory 5 slots
+    ///   [31]    Bias
+    ///   [32]    Time of day
+    ///   [33]    Food at position
+    ///   [34]    Is occupied
+    ///   [35]    Own signal
+    ///   [36-39] Directional threats
+    ///   [40-94] Cognitive inputs (spatial, temporal, social, B1-B3)
+    pub fn sense_enhanced(
+        &self,
+        food_grid: &FoodGrid,
+        spatial_index: &SpatialIndex,
+        organisms: &[Organism],
+        time: u64,
+        config: &Config,
+        cognitive: &CognitiveInputs,
+    ) -> [f32; 95] {
+        let mut inputs = [0.0f32; 95];
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        // ENHANCED SENSORY INPUTS (Phase 2 Feature 1)
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        // [0-7] Enhanced Vision 8 directions (from cognitive inputs)
+        inputs[0] = cognitive.vision_n;
+        inputs[1] = cognitive.vision_ne;
+        inputs[2] = cognitive.vision_e;
+        inputs[3] = cognitive.vision_se;
+        inputs[4] = cognitive.vision_s;
+        inputs[5] = cognitive.vision_sw;
+        inputs[6] = cognitive.vision_w;
+        inputs[7] = cognitive.vision_nw;
+
+        // [8-15] Olfaction 8 directions (from cognitive inputs)
+        inputs[8] = cognitive.smell_n;
+        inputs[9] = cognitive.smell_ne;
+        inputs[10] = cognitive.smell_e;
+        inputs[11] = cognitive.smell_se;
+        inputs[12] = cognitive.smell_s;
+        inputs[13] = cognitive.smell_sw;
+        inputs[14] = cognitive.smell_w;
+        inputs[15] = cognitive.smell_nw;
+
+        // [16-19] Audition 4 directions (from cognitive inputs)
+        inputs[16] = cognitive.sound_n;
+        inputs[17] = cognitive.sound_e;
+        inputs[18] = cognitive.sound_s;
+        inputs[19] = cognitive.sound_w;
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        // REMAPPED LEGACY INPUTS (offset by +20)
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        // Scan for nearby organisms and compute threats
+        let sense_range = 3u8;
+        let neighbor_indices = spatial_index.query_neighbors(self.x, self.y, sense_range);
+        let mut threats = 0;
+        let mut potential_mates = 0;
+        let mut threat_north = 0.0f32;
+        let mut threat_east = 0.0f32;
+        let mut threat_south = 0.0f32;
+        let mut threat_west = 0.0f32;
+
+        for &idx in &neighbor_indices {
+            if idx < organisms.len() {
+                let other = &organisms[idx];
+                if other.is_alive() && other.id != self.id {
+                    let is_threat = other.is_predator || other.size > self.size * 1.2;
+
+                    if is_threat {
+                        threats += 1;
+                        let dx = other.x as i16 - self.x as i16;
+                        let dy = other.y as i16 - self.y as i16;
+                        let dist = ((dx.abs()).max(dy.abs()) as f32).max(1.0);
+                        let threat_intensity = 1.0 / dist;
+
+                        if dy < 0 { threat_north += threat_intensity; }
+                        if dx > 0 { threat_east += threat_intensity; }
+                        if dy > 0 { threat_south += threat_intensity; }
+                        if dx < 0 { threat_west += threat_intensity; }
+                    }
+                    if other.energy > config.organisms.reproduction_threshold {
+                        potential_mates += 1;
+                    }
+                }
+            }
+        }
+
+        // [20-21] Threats and Mates
+        inputs[20] = (threats as f32 / 10.0).min(1.0);
+        inputs[21] = (potential_mates as f32 / 10.0).min(1.0);
+
+        // [22-25] Internal state
+        inputs[22] = (self.energy / config.safety.max_energy).clamp(0.0, 1.0);
+        inputs[23] = self.health / 100.0;
+        inputs[24] = self.size / 5.0;
+        inputs[25] = (self.age as f32 / config.safety.max_age as f32).min(1.0);
+
+        // [26-30] Memory
+        inputs[26..31].copy_from_slice(&self.memory);
+
+        // [31] Bias
+        inputs[31] = 1.0;
+
+        // [32] Time of day
+        inputs[32] = (time % 1000) as f32 / 1000.0;
+
+        // [33] Food at position
+        inputs[33] = food_grid.get(self.x, self.y) / config.world.food_max;
+
+        // [34] Is occupied
+        inputs[34] = if spatial_index.is_occupied(self.x, self.y) { 1.0 } else { 0.0 };
+
+        // [35] Own signal
+        inputs[35] = self.signal;
+
+        // [36-39] Directional threats
+        inputs[36] = (threat_north / 3.0).min(1.0);
+        inputs[37] = (threat_east / 3.0).min(1.0);
+        inputs[38] = (threat_south / 3.0).min(1.0);
+        inputs[39] = (threat_west / 3.0).min(1.0);
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        // COGNITIVE INPUTS (offset by +16 from original positions)
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        // [40-47] Spatial Memory: Food depletion in 8 directions
+        inputs[40] = cognitive.depletion_n;
+        inputs[41] = cognitive.depletion_ne;
+        inputs[42] = cognitive.depletion_e;
+        inputs[43] = cognitive.depletion_se;
+        inputs[44] = cognitive.depletion_s;
+        inputs[45] = cognitive.depletion_sw;
+        inputs[46] = cognitive.depletion_w;
+        inputs[47] = cognitive.depletion_nw;
+
+        // [48-50] Temporal Prediction
+        inputs[48] = cognitive.season_progress;
+        inputs[49] = cognitive.food_trend;
+        inputs[50] = cognitive.time_to_season;
+
+        // [51-53] Social Communication
+        inputs[51] = cognitive.signal_danger;
+        inputs[52] = cognitive.signal_food;
+        inputs[53] = cognitive.signal_help;
+
+        // [54-63] B1: Sequential Memory (Path Tracking)
+        inputs[54] = cognitive.loop_detected;
+        inputs[55] = cognitive.oscillation;
+        inputs[56] = cognitive.path_entropy;
+        inputs[57] = cognitive.movement_bias_x;
+        inputs[58] = cognitive.movement_bias_y;
+        inputs[59] = cognitive.recent_dir_n;
+        inputs[60] = cognitive.recent_dir_e;
+        inputs[61] = cognitive.recent_dir_s;
+        inputs[62] = cognitive.recent_dir_w;
+        inputs[63] = cognitive.recent_dir_none;
+
+        // [64-75] B2: Pattern Recognition (Predator Strategies)
+        inputs[64] = cognitive.pred_movement_variance;
+        inputs[65] = cognitive.pred_speed;
+        inputs[66] = cognitive.pred_direction_consistency;
+        inputs[67] = cognitive.pred_strategy_random;
+        inputs[68] = cognitive.pred_strategy_patrol;
+        inputs[69] = cognitive.pred_strategy_chase;
+        inputs[70] = cognitive.pred_strategy_ambush;
+        inputs[71] = cognitive.pred_classification_confidence;
+        inputs[72] = cognitive.pred_approach_angle;
+        inputs[73] = cognitive.pred_relative_speed;
+        inputs[74] = cognitive.pred_time_observed;
+        inputs[75] = cognitive.pred_threat_level;
+
+        // [76-90] B3: Multi-Agent Coordination
+        inputs[76] = cognitive.large_prey_nearby;
+        inputs[77] = cognitive.large_prey_distance;
+        inputs[78] = cognitive.large_prey_health;
+        inputs[79] = cognitive.large_prey_attackers;
+        inputs[80] = cognitive.large_prey_need;
+        inputs[81] = cognitive.partner_nearby;
+        inputs[82] = cognitive.partner_trust;
+        inputs[83] = cognitive.partner_distance;
+        inputs[84] = cognitive.cooperation_proposed;
+        inputs[85] = cognitive.cooperation_active;
+        inputs[86] = cognitive.hunt_success_rate;
+        inputs[87] = cognitive.partner_fitness;
+        inputs[88] = cognitive.own_attack_power;
+        inputs[89] = cognitive.time_since_last_coop;
+        inputs[90] = cognitive.prey_escape_urgency;
+
+        // [91-94] Reserved for future use
+        inputs[91] = 0.0;
+        inputs[92] = 0.0;
+        inputs[93] = 0.0;
+        inputs[94] = 0.0;
+
+        inputs
+    }
+
+    /// Process inputs through neural network (legacy 75 inputs)
     #[inline]
     pub fn think(&mut self, inputs: &[f32; 75]) -> [f32; 15] {
+        let outputs = self.brain.forward(inputs);
+        let mut result = [0.0f32; 15];
+        for (i, &val) in outputs.iter().take(15).enumerate() {
+            result[i] = val;
+        }
+        result
+    }
+
+    /// Process inputs through neural network (enhanced 95 inputs)
+    #[inline]
+    pub fn think_enhanced(&mut self, inputs: &[f32; 95]) -> [f32; 15] {
         let outputs = self.brain.forward(inputs);
         let mut result = [0.0f32; 15];
         for (i, &val) in outputs.iter().take(15).enumerate() {
