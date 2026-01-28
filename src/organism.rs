@@ -427,6 +427,9 @@ pub struct Organism {
     pub total_lifetime_reward: f32,
     pub successful_forages: u32,
     pub failed_forages: u32,
+    // Phase 2 Feature 3: Learning rate tracking
+    pub current_learning_rate: f32,
+    pub learning_updates_count: u64,
 
     // Cognitive Gate: Eating statistics by food tier
     pub successful_eats: u32,
@@ -501,6 +504,8 @@ impl Organism {
             total_lifetime_reward: 0.0,
             successful_forages: 0,
             failed_forages: 0,
+            current_learning_rate: 0.0,
+            learning_updates_count: 0,
             // Cognitive Gate
             successful_eats: 0,
             failed_eats: 0,
@@ -1276,6 +1281,8 @@ impl Organism {
             total_lifetime_reward: 0.0,
             successful_forages: 0,
             failed_forages: 0,
+            current_learning_rate: 0.0,
+            learning_updates_count: 0,
             // Cognitive Gate
             successful_eats: 0,
             failed_eats: 0,
@@ -1303,6 +1310,11 @@ impl Organism {
         };
         child.brain.mutate(&mutation_config);
 
+        // Update learning rate to match new brain complexity
+        if config.learning.enabled {
+            child.brain.update_learning_rate(&config.learning);
+        }
+
         // Update STM buffer size to match new brain complexity
         child.stm.resize_for_brain(
             child.brain.complexity(),
@@ -1322,12 +1334,20 @@ impl Organism {
     pub fn apply_learning_update(&mut self, reward: f32) {
         self.last_reward = reward;
         self.total_lifetime_reward += reward;
+        self.learning_updates_count += 1;
+
         if reward > 0.0 {
             self.successful_forages += 1;
         } else if reward < 0.0 {
             self.failed_forages += 1;
         }
+
         self.brain.learn(reward);
+
+        // Update current learning rate from brain stats
+        if let Some(stats) = self.brain.learning_stats() {
+            self.current_learning_rate = stats.learning_rate;
+        }
     }
 
     /// Get fitness score (for selection/crossover)

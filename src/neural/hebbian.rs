@@ -144,6 +144,24 @@ pub struct LearningConfig {
     pub weight_limit: f32,
     pub consolidation_threshold: f32,
     pub working_memory_size: usize,
+    /// Phase 2 Feature 3: Scale learning rate with brain complexity
+    /// If true: actual_rate = learning_rate * (brain_layers / 10.0)
+    #[serde(default)]
+    pub scale_with_brain: bool,
+    /// Minimum learning rate when scaling is enabled
+    #[serde(default = "default_min_learning_rate")]
+    pub min_learning_rate: f32,
+    /// Maximum learning rate when scaling is enabled
+    #[serde(default = "default_max_learning_rate")]
+    pub max_learning_rate: f32,
+}
+
+fn default_min_learning_rate() -> f32 {
+    0.0005
+}
+
+fn default_max_learning_rate() -> f32 {
+    0.01
 }
 
 impl Default for LearningConfig {
@@ -155,7 +173,23 @@ impl Default for LearningConfig {
             weight_limit: 5.0,
             consolidation_threshold: 0.1,
             working_memory_size: 100,
+            scale_with_brain: false,
+            min_learning_rate: 0.0005,
+            max_learning_rate: 0.01,
         }
+    }
+}
+
+impl LearningConfig {
+    /// Calculate effective learning rate based on brain complexity
+    /// Formula: base_rate * (brain_layers / 10.0), clamped to [min, max]
+    pub fn effective_learning_rate(&self, brain_layers: usize) -> f32 {
+        if !self.scale_with_brain {
+            return self.learning_rate;
+        }
+
+        let scaled = self.learning_rate * (brain_layers as f32 / 10.0);
+        scaled.clamp(self.min_learning_rate, self.max_learning_rate)
     }
 }
 

@@ -170,7 +170,7 @@ impl World {
 
             let mut org = Organism::new(next_organism_id, lineage_id, x, y, &config);
             if config.learning.enabled {
-                org.brain.enable_learning(config.learning.learning_rate);
+                org.brain.enable_learning_with_config(&config.learning);
             }
             organisms.push(org);
             next_organism_id += 1;
@@ -1802,7 +1802,7 @@ impl World {
             if let Some(mut child) = self.organisms[idx].reproduce(child_id, &self.config) {
                 // Enable learning if configured
                 if self.config.learning.enabled {
-                    child.brain.enable_learning(self.config.learning.learning_rate);
+                    child.brain.enable_learning_with_config(&self.config.learning);
                 }
                 // Record in phylogeny
                 self.phylogeny.record_birth(
@@ -1943,7 +1943,7 @@ impl World {
         for (idx1, idx2) in pairs {
             if let Some(mut child) = self.sexual_reproduce(idx1, idx2) {
                 if self.config.learning.enabled {
-                    child.brain.enable_learning(self.config.learning.learning_rate);
+                    child.brain.enable_learning_with_config(&self.config.learning);
                 }
                 // Log birth and reproduction to database
                 #[cfg(feature = "database")]
@@ -2110,6 +2110,8 @@ impl World {
             total_lifetime_reward: 0.0,
             successful_forages: 0,
             failed_forages: 0,
+            current_learning_rate: 0.0,
+            learning_updates_count: 0,
             // Cognitive Gate
             successful_eats: 0,
             failed_eats: 0,
@@ -2127,6 +2129,11 @@ impl World {
             max_neurons: self.config.safety.max_neurons,
         };
         child.brain.mutate(&mutation_config);
+
+        // Update learning rate to match new brain complexity
+        if self.config.learning.enabled {
+            child.brain.update_learning_rate(&self.config.learning);
+        }
 
         // Update STM buffer size to match new brain complexity
         child.stm.resize_for_brain(

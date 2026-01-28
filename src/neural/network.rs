@@ -245,6 +245,27 @@ impl NeuralNet {
         self.hebbian_state = Some(HebbianState::new(learning_rate, 0.001, 5.0));
     }
 
+    /// Enable Hebbian learning with config-based scaling
+    /// Learning rate scales with brain complexity: base_rate * (layers / 10.0)
+    pub fn enable_learning_with_config(&mut self, config: &super::LearningConfig) {
+        let brain_layers = self.complexity();
+        let effective_rate = config.effective_learning_rate(brain_layers);
+        self.hebbian_state = Some(HebbianState::new(
+            effective_rate,
+            config.decay_rate,
+            config.weight_limit,
+        ));
+    }
+
+    /// Update learning rate based on current brain complexity
+    /// Call this after brain mutations to adjust learning rate
+    pub fn update_learning_rate(&mut self, config: &super::LearningConfig) {
+        let brain_layers = self.complexity();
+        if let Some(ref mut state) = self.hebbian_state {
+            state.learning_rate = config.effective_learning_rate(brain_layers);
+        }
+    }
+
     /// Forward pass that records activations for Hebbian learning
     pub fn forward_with_learning(&mut self, inputs: &[f32], time: u64) -> Vec<f32> {
         debug_assert_eq!(inputs.len(), self.n_inputs);
@@ -295,6 +316,7 @@ impl NeuralNet {
         self.hebbian_state.as_ref().map(|s| LearningStats {
             update_count: s.update_count,
             successful_updates: s.successful_updates,
+            failed_updates: s.update_count.saturating_sub(s.successful_updates),
             efficiency: s.learning_efficiency(),
             learning_rate: s.learning_rate,
         })
@@ -304,10 +326,23 @@ impl NeuralNet {
 /// Statistics about Hebbian learning
 #[derive(Clone, Debug)]
 pub struct LearningStats {
+    /// Total number of learning updates attempted (lifetime_learning_events)
     pub update_count: u64,
+    /// Number of updates that changed weights (successful_adaptations)
     pub successful_updates: u64,
+    /// Updates that didn't change weights (failed_adaptations)
+    pub failed_updates: u64,
+    /// Learning efficiency: successful / total
     pub efficiency: f32,
+    /// Current effective learning rate
     pub learning_rate: f32,
+}
+
+impl LearningStats {
+    /// Get the failed adaptation count
+    pub fn failed_adaptations(&self) -> u64 {
+        self.update_count.saturating_sub(self.successful_updates)
+    }
 }
 
 #[cfg(test)]

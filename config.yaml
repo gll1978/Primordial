@@ -150,14 +150,18 @@ database:
   snapshot_interval: 100
   log_learning_events: false
 
-# Phase 3: Lifetime Learning (Hebbian)
+# Phase 3: Lifetime Learning (Hebbian) + Phase 2 Feature 3 Enhancements
 learning:
   enabled: true
-  learning_rate: 0.001
+  learning_rate: 0.001          # Base learning rate
   decay_rate: 0.001
   weight_limit: 5.0
   consolidation_threshold: 0.1
   working_memory_size: 100
+  # Phase 2 Feature 3: Learning rate scaling with brain complexity
+  scale_with_brain: true        # If true: rate = base * (brain_layers / 10.0)
+  min_learning_rate: 0.0005     # Minimum rate when scaling
+  max_learning_rate: 0.01       # Maximum rate when scaling
 
 # Phase 1.5: Cognitive Gate - Test config (revert to working params)
 cognitive_gate:
