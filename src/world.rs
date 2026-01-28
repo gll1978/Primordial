@@ -17,7 +17,7 @@ use crate::genetics::diversity::DiversityHistory;
 use crate::genetics::phylogeny::PhylogeneticTree;
 use crate::genetics::sex::{Sex, SexualReproductionSystem};
 use crate::grid::{FoodGrid, SpatialIndex};
-use crate::organism::{Action, DeathCause, Organism};
+use crate::organism::{Action, DeathCause, MemoryFrame, Organism, ShortTermMemory};
 use crate::stats::{LineageTracker, Stats, StatsHistory};
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
@@ -487,6 +487,7 @@ impl World {
         self.update_large_prey();            // B3: Large prey movement/escape
         self.maybe_spawn_large_prey();       // B3: Maybe spawn new large prey
         self.cleanup_cooperation();          // B3: Cleanup cooperation state
+        self.apply_memory_decay();           // Phase 2 Feature 2: STM decay
 
         // Phase 8: Update spatial index
         self.update_spatial_index();
@@ -2019,6 +2020,9 @@ impl World {
             fitness2,
         );
 
+        // Calculate brain complexity before moving child_brain
+        let child_brain_complexity = child_brain.complexity();
+
         // Create child diet by averaging parents and mutating
         let mut child_diet = crate::ecology::food_types::DietSpecialization {
             plant_efficiency: (parent1.diet.plant_efficiency + parent2.diet.plant_efficiency) / 2.0,
@@ -2071,6 +2075,13 @@ impl World {
             age: 0,
             brain: child_brain,
             memory: [0.0; 5],
+            stm: crate::organism::ShortTermMemory::for_brain(
+                child_brain_complexity,
+                self.config.memory.buffer_multiplier,
+                self.config.memory.min_buffer_size,
+                self.config.memory.max_buffer_size,
+                self.config.memory.decay_rate,
+            ),
             kills: 0,
             offspring_count: 0,
             food_eaten: 0,
@@ -2116,6 +2127,14 @@ impl World {
             max_neurons: self.config.safety.max_neurons,
         };
         child.brain.mutate(&mutation_config);
+
+        // Update STM buffer size to match new brain complexity
+        child.stm.resize_for_brain(
+            child.brain.complexity(),
+            self.config.memory.buffer_multiplier,
+            self.config.memory.min_buffer_size,
+            self.config.memory.max_buffer_size,
+        );
 
         // Small chance to mutate aquatic trait
         if self.rng.gen::<f32>() < 0.01 {
@@ -2769,6 +2788,29 @@ impl World {
 
             // Apply learning update
             self.organisms[idx].apply_learning_update(reward);
+
+            // Phase 2 Feature 2: Record experience in Short-Term Memory
+            if self.config.memory.enabled {
+                let sensory_snapshot = ShortTermMemory::compress_sensory(
+                    inputs,
+                    self.config.memory.features_per_frame,
+                );
+                let frame = MemoryFrame::new(time, sensory_snapshot, *_action, reward);
+                self.organisms[idx].stm.push(frame);
+            }
+        }
+    }
+
+    /// Apply STM decay to all organisms (call once per step)
+    fn apply_memory_decay(&mut self) {
+        if !self.config.memory.enabled {
+            return;
+        }
+
+        for org in &mut self.organisms {
+            if org.is_alive() {
+                org.stm.apply_decay();
+            }
         }
     }
 }

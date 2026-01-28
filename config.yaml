@@ -208,3 +208,12 @@ day_night:
   cycle_length: 2000         # Steps per complete cycle
   night_vision_penalty: 0.3  # Vision multiplier at night (0.3 = 30%)
   night_olfaction_bonus: 1.5 # Smell bonus at night (1.5 = 150%)
+
+# Phase 2 Feature 2: Short-Term Memory Configuration
+memory:
+  enabled: true              # Enable STM system
+  buffer_multiplier: 2       # buffer_size = brain_layers * 2
+  min_buffer_size: 4         # Minimum buffer size (frames)
+  max_buffer_size: 40        # Maximum buffer size (frames)
+  decay_rate: 0.05           # 5% reward decay per step
+  features_per_frame: 8      # Key sensory features stored per frame

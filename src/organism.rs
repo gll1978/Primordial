@@ -171,6 +171,180 @@ pub struct CognitiveInputs {
     pub prey_escape_urgency: f32,        // How close prey is to escaping (0-1)
 }
 
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// PHASE 2 FEATURE 2: SHORT-TERM MEMORY SYSTEM
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/// A single frame of memory capturing state at a point in time
+/// Stores sensory snapshot, action taken, and resulting reward
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemoryFrame {
+    /// Simulation step when this frame was captured
+    pub step: u64,
+    /// Snapshot of key sensory inputs (compressed to N features)
+    pub sensory_snapshot: Vec<f32>,
+    /// Action that was taken at this step
+    pub action_taken: Action,
+    /// Reward received after the action
+    pub reward: f32,
+    /// Timestamp (same as step, for future time-based queries)
+    pub timestamp: u64,
+}
+
+impl MemoryFrame {
+    /// Create a new memory frame
+    pub fn new(step: u64, sensory_snapshot: Vec<f32>, action_taken: Action, reward: f32) -> Self {
+        Self {
+            step,
+            sensory_snapshot,
+            action_taken,
+            reward,
+            timestamp: step,
+        }
+    }
+}
+
+/// Short-term memory buffer that stores recent experiences
+/// Buffer size dynamically scales with brain complexity: buffer_size = brain_layers * 2
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShortTermMemory {
+    /// Maximum buffer size (calculated from brain_layers * buffer_multiplier)
+    buffer_size: usize,
+    /// Ring buffer of memory frames
+    buffer: VecDeque<MemoryFrame>,
+    /// Decay rate applied to older memories (e.g., 0.05 = 5% per step)
+    decay_rate: f32,
+}
+
+impl Default for ShortTermMemory {
+    fn default() -> Self {
+        Self::new(4, 0.05) // Minimum buffer of 4, 5% decay
+    }
+}
+
+impl ShortTermMemory {
+    /// Create a new short-term memory with given buffer size and decay rate
+    pub fn new(buffer_size: usize, decay_rate: f32) -> Self {
+        Self {
+            buffer_size: buffer_size.max(4), // Minimum of 4 frames
+            buffer: VecDeque::with_capacity(buffer_size.max(4)),
+            decay_rate,
+        }
+    }
+
+    /// Create STM sized for a given brain complexity
+    /// buffer_size = brain_layers * buffer_multiplier, clamped to [min_size, max_size]
+    pub fn for_brain(
+        brain_layers: usize,
+        buffer_multiplier: usize,
+        min_size: usize,
+        max_size: usize,
+        decay_rate: f32,
+    ) -> Self {
+        let size = (brain_layers * buffer_multiplier).clamp(min_size, max_size);
+        Self::new(size, decay_rate)
+    }
+
+    /// Update buffer size based on brain complexity (called after brain mutation)
+    pub fn resize_for_brain(
+        &mut self,
+        brain_layers: usize,
+        buffer_multiplier: usize,
+        min_size: usize,
+        max_size: usize,
+    ) {
+        let new_size = (brain_layers * buffer_multiplier).clamp(min_size, max_size);
+        self.buffer_size = new_size;
+        // Trim buffer if it exceeds new size
+        while self.buffer.len() > new_size {
+            self.buffer.pop_front();
+        }
+    }
+
+    /// Push a new memory frame, removing oldest if at capacity
+    pub fn push(&mut self, frame: MemoryFrame) {
+        if self.buffer.len() >= self.buffer_size {
+            self.buffer.pop_front();
+        }
+        self.buffer.push_back(frame);
+    }
+
+    /// Apply decay to all stored memories (reward values fade over time)
+    pub fn apply_decay(&mut self) {
+        for frame in self.buffer.iter_mut() {
+            frame.reward *= 1.0 - self.decay_rate;
+        }
+    }
+
+    /// Get the most recent N frames (or all if fewer exist)
+    pub fn recent(&self, n: usize) -> impl Iterator<Item = &MemoryFrame> {
+        let skip = self.buffer.len().saturating_sub(n);
+        self.buffer.iter().skip(skip)
+    }
+
+    /// Get all frames
+    pub fn all(&self) -> impl Iterator<Item = &MemoryFrame> {
+        self.buffer.iter()
+    }
+
+    /// Get the most recent frame
+    pub fn last(&self) -> Option<&MemoryFrame> {
+        self.buffer.back()
+    }
+
+    /// Get number of stored frames
+    pub fn len(&self) -> usize {
+        self.buffer.len()
+    }
+
+    /// Check if memory is empty
+    pub fn is_empty(&self) -> bool {
+        self.buffer.is_empty()
+    }
+
+    /// Get current buffer size limit
+    pub fn capacity(&self) -> usize {
+        self.buffer_size
+    }
+
+    /// Calculate average reward from recent memories
+    pub fn average_recent_reward(&self, n: usize) -> f32 {
+        let frames: Vec<_> = self.recent(n).collect();
+        if frames.is_empty() {
+            return 0.0;
+        }
+        let sum: f32 = frames.iter().map(|f| f.reward).sum();
+        sum / frames.len() as f32
+    }
+
+    /// Find frames where a specific action was taken
+    pub fn frames_with_action(&self, action: Action) -> impl Iterator<Item = &MemoryFrame> {
+        self.buffer.iter().filter(move |f| f.action_taken == action)
+    }
+
+    /// Calculate success rate for a specific action (positive reward = success)
+    pub fn action_success_rate(&self, action: Action) -> f32 {
+        let matching: Vec<_> = self.frames_with_action(action).collect();
+        if matching.is_empty() {
+            return 0.5; // No data, assume neutral
+        }
+        let successes = matching.iter().filter(|f| f.reward > 0.0).count();
+        successes as f32 / matching.len() as f32
+    }
+
+    /// Clear all memories
+    pub fn clear(&mut self) {
+        self.buffer.clear();
+    }
+
+    /// Extract key features from sensory input for storage (compression)
+    /// Takes full sensory array and returns compressed version with N key features
+    pub fn compress_sensory(inputs: &[f32], features_per_frame: usize) -> Vec<f32> {
+        // Store first N features (most important: vision, smell, internal state)
+        inputs.iter().take(features_per_frame).copied().collect()
+    }
+}
+
 /// An organism in the simulation
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Organism {
@@ -190,8 +364,12 @@ pub struct Organism {
     // Neural network brain
     pub brain: NeuralNet,
 
-    // Short-term memory
+    // Legacy short-term memory (simple 5-slot buffer)
     pub memory: [f32; 5],
+
+    // Phase 2 Feature 2: Advanced Short-Term Memory
+    // Buffer size = brain_layers * 2, stores MemoryFrames with sensory/action/reward
+    pub stm: ShortTermMemory,
 
     // Statistics
     pub kills: u16,
@@ -288,6 +466,13 @@ impl Organism {
             age: 0,
             brain,
             memory: [0.0; 5],
+            stm: ShortTermMemory::for_brain(
+                0, // Initial brain has 0 hidden layers
+                config.memory.buffer_multiplier,
+                config.memory.min_buffer_size,
+                config.memory.max_buffer_size,
+                config.memory.decay_rate,
+            ),
             kills: 0,
             offspring_count: 0,
             food_eaten: 0,
@@ -1056,6 +1241,13 @@ impl Organism {
             age: 0,
             brain: self.brain.clone(),
             memory: [0.0; 5],
+            stm: ShortTermMemory::for_brain(
+                self.brain.complexity(), // Inherit parent's brain complexity
+                config.memory.buffer_multiplier,
+                config.memory.min_buffer_size,
+                config.memory.max_buffer_size,
+                config.memory.decay_rate,
+            ),
             kills: 0,
             offspring_count: 0,
             food_eaten: 0,
@@ -1110,6 +1302,14 @@ impl Organism {
             max_neurons: config.safety.max_neurons,
         };
         child.brain.mutate(&mutation_config);
+
+        // Update STM buffer size to match new brain complexity
+        child.stm.resize_for_brain(
+            child.brain.complexity(),
+            config.memory.buffer_multiplier,
+            config.memory.min_buffer_size,
+            config.memory.max_buffer_size,
+        );
 
         // Position child near parent
         let grid_size = config.world.grid_size as u8;

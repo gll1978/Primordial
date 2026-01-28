@@ -59,6 +59,9 @@ pub struct Config {
     pub sensory: SensoryConfig,
     #[serde(default)]
     pub day_night: DayNightConfig,
+    // Phase 2 Feature 2: Short-Term Memory System
+    #[serde(default)]
+    pub memory: MemoryConfig,
 }
 
 /// Database configuration for individual organism tracking
@@ -228,6 +231,36 @@ impl Default for DayNightConfig {
     }
 }
 
+/// Short-term memory system configuration (Phase 2 Feature 2)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemoryConfig {
+    /// Enable short-term memory system
+    pub enabled: bool,
+    /// Base buffer size multiplier (actual size = brain_layers * multiplier)
+    pub buffer_multiplier: usize,
+    /// Minimum buffer size (even for small brains)
+    pub min_buffer_size: usize,
+    /// Maximum buffer size (cap for large brains)
+    pub max_buffer_size: usize,
+    /// Memory decay rate per step (0.0-1.0, higher = faster decay)
+    pub decay_rate: f32,
+    /// Number of sensory features to store per frame (compressed snapshot)
+    pub features_per_frame: usize,
+}
+
+impl Default for MemoryConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            buffer_multiplier: 2,      // buffer_size = brain_layers * 2
+            min_buffer_size: 4,        // At least 4 frames
+            max_buffer_size: 40,       // Cap at 40 frames
+            decay_rate: 0.05,          // 5% decay per step
+            features_per_frame: 8,     // Store 8 key features per frame
+        }
+    }
+}
+
 /// World/environment configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorldConfig {
@@ -380,6 +413,7 @@ impl Default for Config {
             brain_tax: BrainTaxConfig::default(),
             sensory: SensoryConfig::default(),
             day_night: DayNightConfig::default(),
+            memory: MemoryConfig::default(),
         }
     }
 }

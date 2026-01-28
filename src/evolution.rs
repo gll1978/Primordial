@@ -49,6 +49,9 @@ impl EvolutionEngine {
         // Apply mutation to child
         child_brain.mutate(&self.mutation_config);
 
+        // Calculate brain complexity before moving child_brain
+        let child_brain_complexity = child_brain.complexity();
+
         // Create child diet by averaging parents
         let mut child_diet = DietSpecialization {
             plant_efficiency: (parent1.diet.plant_efficiency + parent2.diet.plant_efficiency) / 2.0,
@@ -71,6 +74,14 @@ impl EvolutionEngine {
             age: 0,
             brain: child_brain,
             memory: [0.0; 5],
+            // STM sized for child brain complexity (using default config values)
+            stm: crate::organism::ShortTermMemory::for_brain(
+                child_brain_complexity,
+                2,   // buffer_multiplier default
+                4,   // min_buffer_size default
+                40,  // max_buffer_size default
+                0.05, // decay_rate default
+            ),
             kills: 0,
             offspring_count: 0,
             food_eaten: 0,
