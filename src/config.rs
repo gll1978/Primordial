@@ -45,6 +45,33 @@ pub struct Config {
     // Phase 3: Lifetime Learning (Hebbian)
     #[serde(default)]
     pub learning: LearningConfig,
+    // Database tracking
+    #[serde(default)]
+    pub database: DatabaseConfig,
+}
+
+/// Database configuration for individual organism tracking
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DatabaseConfig {
+    /// Enable database logging
+    pub enabled: bool,
+    /// PostgreSQL connection URL
+    pub url: String,
+    /// Steps between organism snapshots
+    pub snapshot_interval: u64,
+    /// Whether to log learning events
+    pub log_learning_events: bool,
+}
+
+impl Default for DatabaseConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            url: "postgresql://primordial:primordial@localhost/primordial_v2".to_string(),
+            snapshot_interval: 100,
+            log_learning_events: false,
+        }
+    }
 }
 
 /// World/environment configuration
@@ -191,6 +218,7 @@ impl Default for Config {
             behavior_tracking: BehaviorTrackingConfig::default(),
             procedural_environment: EnvironmentConfig::default(),
             learning: LearningConfig::default(),
+            database: DatabaseConfig::default(),
         }
     }
 }

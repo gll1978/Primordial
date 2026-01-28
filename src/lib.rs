@@ -70,6 +70,9 @@ pub mod world;
 #[cfg(feature = "gui")]
 pub mod gui;
 
+#[cfg(feature = "database")]
+pub mod database;
+
 // Re-export main types
 pub use config::Config;
 pub use organism::Organism;

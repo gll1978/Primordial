@@ -23,6 +23,10 @@ use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
 use rayon::prelude::*;
 use std::collections::{HashMap, VecDeque};
+#[cfg(feature = "database")]
+use std::sync::mpsc as std_mpsc;
+#[cfg(feature = "database")]
+use crate::database::DbEvent;
 
 /// Food depletion tracking for spatial memory
 #[derive(Clone, Debug)]
@@ -115,6 +119,10 @@ pub struct World {
     pub large_prey: Vec<LargePrey>,
     pub cooperation_manager: CooperationManager,
     pub next_large_prey_id: u64,
+
+    // Database logging channel
+    #[cfg(feature = "database")]
+    pub db_sender: Option<std_mpsc::Sender<DbEvent>>,
 }
 
 impl World {
@@ -264,12 +272,36 @@ impl World {
             large_prey: Vec::new(),
             cooperation_manager: CooperationManager::new(),
             next_large_prey_id: 0,
+            #[cfg(feature = "database")]
+            db_sender: None,
         };
 
         // Initial spatial index update
         world.update_spatial_index();
 
         world
+    }
+
+    /// Set the database sender for logging events
+    #[cfg(feature = "database")]
+    pub fn set_db_sender(&mut self, sender: std_mpsc::Sender<DbEvent>) {
+        // Log birth of all initial organisms
+        for org in &self.organisms {
+            let _ = sender.send(DbEvent::OrganismBirth {
+                organism_id: org.id,
+                lineage_id: org.lineage_id,
+                generation: org.generation,
+                parent1_id: None,
+                parent2_id: None,
+                step: 0,
+                x: org.x,
+                y: org.y,
+                brain_neurons: org.brain.total_hidden_neurons() as i32,
+                brain_connections: org.brain.parameter_count() as i32,
+                is_predator: org.is_predator,
+            });
+        }
+        self.db_sender = Some(sender);
     }
 
     /// Restore world from checkpoint
@@ -366,6 +398,8 @@ impl World {
             large_prey: Vec::new(),
             cooperation_manager: CooperationManager::new(),
             next_large_prey_id: 0,
+            #[cfg(feature = "database")]
+            db_sender: None,
         };
 
         world.update_spatial_index();
@@ -441,6 +475,10 @@ impl World {
 
         // Phase 9: Update statistics
         self.update_stats();
+
+        // Phase 9.5: Database logging
+        #[cfg(feature = "database")]
+        self.log_to_database();
 
         // Phase 10: Check for environment reshuffle
         self.check_environment_reshuffle();
@@ -1422,6 +1460,35 @@ impl World {
                 );
                 self.phylogeny.record_offspring(child.parent1_id, child.parent2_id);
 
+                // Log birth and reproduction to database
+                #[cfg(feature = "database")]
+                if let Some(ref sender) = self.db_sender {
+                    let _ = sender.send(DbEvent::OrganismBirth {
+                        organism_id: child.id,
+                        lineage_id: child.lineage_id,
+                        generation: child.generation,
+                        parent1_id: child.parent1_id,
+                        parent2_id: child.parent2_id,
+                        step: self.time,
+                        x: child.x,
+                        y: child.y,
+                        brain_neurons: child.brain.total_hidden_neurons() as i32,
+                        brain_connections: child.brain.parameter_count() as i32,
+                        is_predator: child.is_predator,
+                    });
+                    let _ = sender.send(DbEvent::ReproductionEvent {
+                        step: self.time,
+                        parent1_id: self.organisms[idx].id,
+                        parent2_id: None,
+                        child_id: child.id,
+                        child_lineage_id: child.lineage_id,
+                        child_generation: child.generation,
+                        mutation_count: 0,
+                        parent1_energy: self.organisms[idx].energy,
+                        child_energy: child.energy,
+                    });
+                }
+
                 offspring.push(child);
                 self.births_this_step += 1;
             }
@@ -1518,6 +1585,35 @@ impl World {
                 if self.config.learning.enabled {
                     child.brain.enable_learning(self.config.learning.learning_rate);
                 }
+                // Log birth and reproduction to database
+                #[cfg(feature = "database")]
+                if let Some(ref sender) = self.db_sender {
+                    let _ = sender.send(DbEvent::OrganismBirth {
+                        organism_id: child.id,
+                        lineage_id: child.lineage_id,
+                        generation: child.generation,
+                        parent1_id: child.parent1_id,
+                        parent2_id: child.parent2_id,
+                        step: self.time,
+                        x: child.x,
+                        y: child.y,
+                        brain_neurons: child.brain.total_hidden_neurons() as i32,
+                        brain_connections: child.brain.parameter_count() as i32,
+                        is_predator: child.is_predator,
+                    });
+                    let _ = sender.send(DbEvent::ReproductionEvent {
+                        step: self.time,
+                        parent1_id: self.organisms[idx1].id,
+                        parent2_id: Some(self.organisms[idx2].id),
+                        child_id: child.id,
+                        child_lineage_id: child.lineage_id,
+                        child_generation: child.generation,
+                        mutation_count: 0,
+                        parent1_energy: self.organisms[idx1].energy,
+                        child_energy: child.energy,
+                    });
+                }
+
                 offspring.push(child);
                 self.births_this_step += 1;
             }
@@ -1701,6 +1797,28 @@ impl World {
                 // Mark dead in behavior tracker
                 if let Some(ref mut bt) = self.behavior_tracker {
                     bt.mark_dead(org.id);
+                }
+
+                // Log death to database
+                #[cfg(feature = "database")]
+                if let Some(ref sender) = self.db_sender {
+                    let death_cause = match org.cause_of_death {
+                        Some(DeathCause::Starvation) => "starvation",
+                        Some(DeathCause::Predation) => "predation",
+                        Some(DeathCause::OldAge) => "old_age",
+                        None => "unknown",
+                    };
+                    let _ = sender.send(DbEvent::OrganismDeath {
+                        organism_id: org.id,
+                        step: self.time,
+                        x: org.x,
+                        y: org.y,
+                        death_cause: death_cause.to_string(),
+                        food_eaten: org.food_eaten,
+                        kills: org.kills,
+                        offspring: org.offspring_count,
+                        max_energy: org.energy, // energy at death
+                    });
                 }
             }
         }
@@ -1909,6 +2027,79 @@ impl World {
         // Record diversity metrics (every 100 steps to match diversity_history interval)
         if self.time % self.diversity_history.record_interval == 0 {
             self.diversity_history.record(self.time, &self.organisms, &self.phylogeny);
+        }
+    }
+
+    /// Log events to database (called each step when database feature is enabled)
+    #[cfg(feature = "database")]
+    fn log_to_database(&self) {
+        let sender = match &self.db_sender {
+            Some(s) => s,
+            None => return,
+        };
+
+        let snapshot_interval = self.config.database.snapshot_interval;
+
+        // World snapshot every stats_interval steps
+        if self.time % self.config.logging.stats_interval == 0 {
+            let alive: Vec<&crate::organism::Organism> =
+                self.organisms.iter().filter(|o| o.is_alive()).collect();
+            let pop = alive.len();
+            if pop > 0 {
+                let avg_energy = alive.iter().map(|o| o.energy).sum::<f32>() / pop as f32;
+                let avg_age = alive.iter().map(|o| o.age as f32).sum::<f32>() / pop as f32;
+                let avg_neurons =
+                    alive.iter().map(|o| o.brain.total_hidden_neurons() as f32).sum::<f32>() / pop as f32;
+                let avg_conns = alive
+                    .iter()
+                    .map(|o| o.brain.parameter_count() as f32)
+                    .sum::<f32>()
+                    / pop as f32;
+                let predator_count = alive.iter().filter(|o| o.is_predator || o.kills > 0).count();
+
+                let _ = sender.send(DbEvent::WorldSnapshot {
+                    step: self.time,
+                    population: pop as i32,
+                    births: self.births_this_step as i32,
+                    deaths: self.deaths_this_step as i32,
+                    kills: self.kills_this_step as i32,
+                    max_generation: self.generation_max as i16,
+                    avg_energy,
+                    avg_age,
+                    avg_brain_neurons: avg_neurons,
+                    avg_brain_connections: avg_conns,
+                    predator_count: predator_count as i32,
+                    lineage_count: self.lineage_tracker.surviving_count() as i32,
+                    total_food: self.food_grid.total_food(),
+                });
+            }
+        }
+
+        // Organism snapshots every snapshot_interval steps
+        if snapshot_interval > 0 && self.time % snapshot_interval == 0 {
+            for org in &self.organisms {
+                if !org.is_alive() {
+                    continue;
+                }
+                let action_str = org.last_action.map(|a| format!("{:?}", a));
+                let _ = sender.send(DbEvent::OrganismSnapshot {
+                    step: self.time,
+                    organism_id: org.id,
+                    x: org.x,
+                    y: org.y,
+                    energy: org.energy,
+                    health: org.health,
+                    age: org.age,
+                    size: org.size,
+                    kills: org.kills,
+                    offspring: org.offspring_count,
+                    food_eaten: org.food_eaten,
+                    brain_neurons: org.brain.total_hidden_neurons() as i32,
+                    brain_connections: org.brain.parameter_count() as i32,
+                    is_predator: org.is_predator,
+                    last_action: action_str,
+                });
+            }
         }
     }
 

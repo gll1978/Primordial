@@ -41,6 +41,10 @@ enum Commands {
         /// Quiet mode (minimal output)
         #[arg(short, long)]
         quiet: bool,
+
+        /// PostgreSQL database URL for event logging
+        #[arg(long)]
+        database_url: Option<String>,
     },
 
     /// Resume simulation from checkpoint
@@ -96,7 +100,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             output,
             seed,
             quiet,
-        } => run_simulation(config, steps, output, seed, quiet),
+            database_url,
+        } => run_simulation(config, steps, output, seed, quiet, database_url),
 
         Commands::Resume {
             checkpoint,
@@ -118,6 +123,7 @@ fn run_simulation(
     output: PathBuf,
     seed: Option<u64>,
     quiet: bool,
+    #[allow(unused_variables)] database_url: Option<String>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Load or create config
     let config = if config_path.exists() {
@@ -137,6 +143,34 @@ fn run_simulation(
         World::new_with_seed(config.clone(), s)
     } else {
         World::new(config.clone())
+    };
+
+    // Initialize database if URL provided
+    #[cfg(feature = "database")]
+    let db = {
+        let url = database_url.as_deref().or_else(|| {
+            if config.database.enabled {
+                Some(config.database.url.as_str())
+            } else {
+                None
+            }
+        });
+        if let Some(db_url) = url {
+            let config_json = serde_json::to_string(&config).unwrap_or_default();
+            match primordial::database::Database::new(db_url, &config_json, seed) {
+                Ok(db) => {
+                    println!("Database connected: run_id = {}", db.run_id);
+                    world.set_db_sender(db.sender_clone());
+                    Some(db)
+                }
+                Err(e) => {
+                    eprintln!("Database connection failed: {}", e);
+                    None
+                }
+            }
+        } else {
+            None
+        }
     };
 
     println!("Starting simulation");
@@ -205,6 +239,17 @@ fn run_simulation(
     let stats_path = output.join("stats_history.json");
     world.stats_history.save(stats_path.to_str().unwrap())?;
     println!("Stats history: {:?}", stats_path);
+
+    // Shutdown database
+    #[cfg(feature = "database")]
+    if let Some(db) = db {
+        db.shutdown(
+            world.time as u64,
+            world.population() as i32,
+            world.generation_max as i32,
+        );
+        println!("Database writer shut down");
+    }
 
     Ok(())
 }
