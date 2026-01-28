@@ -2106,6 +2106,21 @@ impl World {
                     is_predator: org.is_predator,
                     last_action: action_str,
                 });
+
+                // Learning events (only if learning is enabled and configured)
+                if self.config.database.log_learning_events {
+                    if let Some(stats) = org.brain.learning_stats() {
+                        let _ = sender.send(DbEvent::LearningEvent {
+                            step: self.time,
+                            organism_id: org.id,
+                            reward: org.last_reward,
+                            total_lifetime_reward: org.total_lifetime_reward,
+                            successful_forages: org.successful_forages,
+                            failed_forages: org.failed_forages,
+                            weight_updates_count: stats.update_count as i32,
+                        });
+                    }
+                }
             }
         }
     }
