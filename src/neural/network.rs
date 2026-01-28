@@ -170,6 +170,22 @@ impl NeuralNet {
         self.hidden_sizes.len()  // Count layers, not neurons (like Python)
     }
 
+    /// Get brain's capability to handle food complexity (0.0-1.0)
+    /// Used by Cognitive Gate system: each layer adds 0.1 capability
+    /// 0-2 layers: 0.0-0.2 (simple food only)
+    /// 3-6 layers: 0.3-0.6 (medium food accessible)
+    /// 7+ layers:  0.7+    (complex food accessible)
+    #[inline]
+    pub fn get_complexity_capability(&self) -> f32 {
+        use rand::Rng;
+        // Base capability from layer count
+        let base = self.hidden_sizes.len() as f32 * 0.1;
+        // Small individual variation (-0.05 to +0.05)
+        let variation = rand::thread_rng().gen_range(-0.05..0.05);
+        // Clamp to valid range
+        (base + variation).clamp(0.0, 1.0)
+    }
+
     /// Get total number of hidden neurons
     #[inline]
     pub fn total_hidden_neurons(&self) -> usize {

@@ -21,7 +21,7 @@
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 world:
-  grid_size: 100  # Smaller grid for denser population
+  grid_size: 80  # Smaller grid for denser population
   food_regen_rate: 0.4  # Reduced for sustained pressure
   food_max: 100.0
   initial_food_density: 0.7  # Standard
@@ -31,8 +31,8 @@ organisms:
   initial_energy: 120.0  # More starting energy
   reproduction_cost: 30.0  # Lower for easier reproduction
   reproduction_threshold: 50.0  # Lower threshold
-  metabolism_base: 0.55  # Slightly above baseline (was 0.5)
-  food_energy: 23.0  # Slightly reduced from 25
+  metabolism_base: 0.38  # Reduced for better survival
+  food_energy: 23.0  # Matched in FoodTier::Simple
   move_cost: 0.2  # Lower move cost
 
 neural:
@@ -45,8 +45,8 @@ neural:
 evolution:
   mutation_rate: 0.10
   mutation_strength: 0.3
-  add_neuron_rate: 0.50  # High rate - penalty caps growth
-  add_connection_rate: 0.30  # High rate for complexity
+  add_neuron_rate: 0.50  # Maximum for brain growth
+  add_connection_rate: 0.30  # Higher for complexity
 
 safety:
   max_population: 900  # Lower cap = continuous selection pressure
@@ -132,9 +132,9 @@ food_patches:
 procedural_environment:
   enabled: true
   reshuffle_interval: 100  # High threshold, rely on step-based
-  reshuffle_interval_steps: 15000  # Force reshuffle every 15k steps
+  reshuffle_interval_steps: 50000  # Reshuffle every 50k steps (safer)
   base_seed: 42
-  variation_level: 0.5
+  variation_level: 0.3  # Lower variation for smoother transitions
 
 # Phase 1: Behavior Tracking
 behavior_tracking:
@@ -157,3 +157,34 @@ learning:
   weight_limit: 5.0
   consolidation_threshold: 0.1
   working_memory_size: 100
+
+# Phase 1.5: Cognitive Gate - Test config (revert to working params)
+cognitive_gate:
+  enabled: true
+  # Food Distribution (90% simple for population stability)
+  simple_ratio: 0.90
+  medium_ratio: 0.08
+  # complex_ratio: 0.02 (implicit)
+
+  # Complexity Ranges (original working ranges)
+  simple_complexity_min: 0.00
+  simple_complexity_max: 0.15
+  medium_complexity_min: 0.15
+  medium_complexity_max: 0.50
+  complex_complexity_min: 0.50
+  complex_complexity_max: 1.00
+
+  # Matching Logic
+  tolerance: 0.25
+  failure_cost: 0.5
+
+  # Food Energy (increased for survival)
+  simple_energy: 28.0
+  medium_energy: 33.0
+  complex_energy: 40.0
+
+# Brain Tax - disabled for testing
+brain_tax:
+  enabled: false           # Temporarily disabled
+  threshold: 10
+  cost_per_layer: 0.02

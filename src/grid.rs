@@ -225,6 +225,195 @@ impl FoodGrid {
     }
 }
 
+// ============================================================================
+// COGNITIVE GATE SYSTEM - Food Complexity
+// ============================================================================
+
+/// Food complexity tier - determines brain requirement for eating
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum FoodTier {
+    /// Simple food: accessible to 0-2 layer brains (complexity 0.0-0.3)
+    Simple,
+    /// Medium food: requires 3-6 layer brains (complexity 0.3-0.7)
+    Medium,
+    /// Complex food: requires 7+ layer brains (complexity 0.7-1.0)
+    Complex,
+}
+
+impl FoodTier {
+    /// Get energy value for this food tier (default values)
+    pub fn energy(&self) -> f32 {
+        match self {
+            FoodTier::Simple => 23.0,
+            FoodTier::Medium => 27.0,
+            FoodTier::Complex => 32.0,
+        }
+    }
+
+    /// Get energy with configurable values
+    pub fn energy_with_config(&self, simple: f32, medium: f32, complex: f32) -> f32 {
+        match self {
+            FoodTier::Simple => simple,
+            FoodTier::Medium => medium,
+            FoodTier::Complex => complex,
+        }
+    }
+
+    /// Get complexity range for this tier (default values with overlap)
+    pub fn complexity_range(&self) -> (f32, f32) {
+        match self {
+            FoodTier::Simple => (0.0, 0.25),
+            FoodTier::Medium => (0.20, 0.60),
+            FoodTier::Complex => (0.55, 1.0),
+        }
+    }
+
+    /// Generate a random complexity value within configurable range
+    pub fn random_complexity_with_range(&self, min: f32, max: f32) -> f32 {
+        use rand::Rng;
+        rand::thread_rng().gen_range(min..max)
+    }
+
+    /// Generate a random complexity value within this tier's default range
+    pub fn random_complexity(&self) -> f32 {
+        use rand::Rng;
+        let (min, max) = self.complexity_range();
+        rand::thread_rng().gen_range(min..max)
+    }
+
+    /// Get tier from complexity value (using configurable thresholds)
+    pub fn from_complexity_with_thresholds(complexity: f32, simple_max: f32, medium_max: f32) -> Self {
+        if complexity < simple_max {
+            FoodTier::Simple
+        } else if complexity < medium_max {
+            FoodTier::Medium
+        } else {
+            FoodTier::Complex
+        }
+    }
+
+    /// Get tier from complexity value (default thresholds)
+    pub fn from_complexity(complexity: f32) -> Self {
+        Self::from_complexity_with_thresholds(complexity, 0.25, 0.60)
+    }
+
+    /// Roll for a random food tier based on distribution (40/40/20)
+    pub fn random_tier() -> Self {
+        use rand::Rng;
+        let roll: f32 = rand::thread_rng().gen();
+        if roll < 0.40 {
+            FoodTier::Simple
+        } else if roll < 0.80 {
+            FoodTier::Medium
+        } else {
+            FoodTier::Complex
+        }
+    }
+}
+
+/// Grid storing food complexity values (parallel to FoodGrid)
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ComplexityGrid {
+    grid_size: usize,
+    /// Complexity values 0.0-1.0 per cell
+    cells: Vec<Vec<f32>>,
+}
+
+impl ComplexityGrid {
+    /// Create a new complexity grid initialized to 0 (simple food)
+    pub fn new(grid_size: usize) -> Self {
+        Self {
+            grid_size,
+            cells: vec![vec![0.0; grid_size]; grid_size],
+        }
+    }
+
+    /// Get complexity at position
+    #[inline]
+    pub fn get(&self, x: u8, y: u8) -> f32 {
+        let x = x as usize;
+        let y = y as usize;
+        if x < self.grid_size && y < self.grid_size {
+            self.cells[y][x]
+        } else {
+            0.0
+        }
+    }
+
+    /// Get food tier at position
+    #[inline]
+    pub fn get_tier(&self, x: u8, y: u8) -> FoodTier {
+        FoodTier::from_complexity(self.get(x, y))
+    }
+
+    /// Set complexity at position
+    #[inline]
+    pub fn set(&mut self, x: u8, y: u8, complexity: f32) {
+        let x = x as usize;
+        let y = y as usize;
+        if x < self.grid_size && y < self.grid_size {
+            self.cells[y][x] = complexity.clamp(0.0, 1.0);
+        }
+    }
+
+    /// Set food tier at position (generates random complexity within tier range)
+    #[inline]
+    pub fn set_tier(&mut self, x: u8, y: u8, tier: FoodTier) {
+        self.set(x, y, tier.random_complexity());
+    }
+
+    /// Clear complexity when food is consumed
+    #[inline]
+    pub fn clear(&mut self, x: u8, y: u8) {
+        let x = x as usize;
+        let y = y as usize;
+        if x < self.grid_size && y < self.grid_size {
+            self.cells[y][x] = 0.0;
+        }
+    }
+
+    /// Initialize with random complexity distribution matching 40/40/20
+    pub fn initialize(&mut self, food_grid: &FoodGrid) {
+        for y in 0..self.grid_size {
+            for x in 0..self.grid_size {
+                if food_grid.get(x as u8, y as u8) > 0.1 {
+                    let tier = FoodTier::random_tier();
+                    self.cells[y][x] = tier.random_complexity();
+                } else {
+                    self.cells[y][x] = 0.0;
+                }
+            }
+        }
+    }
+
+    /// Get grid size
+    #[inline]
+    pub fn size(&self) -> usize {
+        self.grid_size
+    }
+
+    /// Count food by tier
+    pub fn count_by_tier(&self, food_grid: &FoodGrid) -> (usize, usize, usize) {
+        let mut simple = 0;
+        let mut medium = 0;
+        let mut complex = 0;
+
+        for y in 0..self.grid_size {
+            for x in 0..self.grid_size {
+                if food_grid.get(x as u8, y as u8) > 0.1 {
+                    match self.get_tier(x as u8, y as u8) {
+                        FoodTier::Simple => simple += 1,
+                        FoodTier::Medium => medium += 1,
+                        FoodTier::Complex => complex += 1,
+                    }
+                }
+            }
+        }
+
+        (simple, medium, complex)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

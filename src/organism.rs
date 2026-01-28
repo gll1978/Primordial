@@ -212,6 +212,13 @@ pub struct Organism {
     pub total_lifetime_reward: f32,
     pub successful_forages: u32,
     pub failed_forages: u32,
+
+    // Cognitive Gate: Eating statistics by food tier
+    pub successful_eats: u32,
+    pub failed_eats: u32,
+    pub simple_food_eaten: u32,
+    pub medium_food_eaten: u32,
+    pub complex_food_eaten: u32,
 }
 
 /// Social signal types for communication between organisms
@@ -272,6 +279,12 @@ impl Organism {
             total_lifetime_reward: 0.0,
             successful_forages: 0,
             failed_forages: 0,
+            // Cognitive Gate
+            successful_eats: 0,
+            failed_eats: 0,
+            simple_food_eaten: 0,
+            medium_food_eaten: 0,
+            complex_food_eaten: 0,
         }
     }
 
@@ -663,42 +676,36 @@ impl Organism {
         let base_cost = config.organisms.metabolism_base;
         let size_cost = self.size * 0.1;
 
-        // Brain complexity BONUS with HARD CAP + PENALTY SYSTEM
-        // Prevents runaway growth while rewarding moderate complexity
-        // Sweet spot: 5-7 layers
+        // Brain complexity cost/bonus system
         let brain_complexity = self.brain.complexity();
-        let has_learning = self.brain.has_learning();
 
+        // Brain bonus: sweet spot at 3-7 layers
         let brain_bonus = if brain_complexity == 0 {
             0.0
-        } else if !has_learning {
-            // NO LEARNING: existing penalty system
-            if brain_complexity <= 7 {
-                0.03 * brain_complexity as f32
-            } else if brain_complexity <= 10 {
-                0.21 + 0.01 * (brain_complexity - 7) as f32
-            } else if brain_complexity <= 12 {
-                0.24
-            } else {
-                (0.24 - 0.05 * (brain_complexity - 12) as f32).max(-0.30)
-            }
+        } else if brain_complexity <= 7 {
+            // Sweet spot: bonus up to 0.21
+            0.03 * brain_complexity as f32
+        } else if brain_complexity <= 10 {
+            // Diminishing returns
+            0.21 + 0.01 * (brain_complexity - 7) as f32
         } else {
-            // WITH LEARNING: moderate bonus, penalty starts at 10+
-            // Similar to no-learning but capped earlier
-            if brain_complexity <= 6 {
-                0.025 * brain_complexity as f32  // Max 0.15
-            } else if brain_complexity <= 9 {
-                0.15 + 0.005 * (brain_complexity - 6) as f32  // Max 0.165
-            } else if brain_complexity <= 11 {
-                0.165  // Capped
-            } else {
-                // Penalty: 12→0.125, 14→0.045, 16→-0.035
-                (0.165 - 0.04 * (brain_complexity - 11) as f32).max(-0.30)
-            }
+            // Above 10: cap at 0.24 (no steep penalty, brain_tax handles it)
+            0.24
         };
 
+        // Brain tax: additional cost for layers above threshold
+        let brain_tax_cost = if config.brain_tax.enabled && brain_complexity > config.brain_tax.threshold {
+            let excess_layers = (brain_complexity - config.brain_tax.threshold) as f32;
+            excess_layers * config.brain_tax.cost_per_layer
+        } else {
+            0.0
+        };
+
+        // Total metabolic cost
+        let total_cost = base_cost + size_cost - brain_bonus + brain_tax_cost;
+
         // Ensure minimum metabolism of 0.08 to maintain population stability
-        self.energy -= (base_cost + size_cost - brain_bonus).max(0.08);
+        self.energy -= total_cost.max(0.08);
 
         // Health decay when starving
         if self.energy < 0.0 {
@@ -823,6 +830,12 @@ impl Organism {
             total_lifetime_reward: 0.0,
             successful_forages: 0,
             failed_forages: 0,
+            // Cognitive Gate
+            successful_eats: 0,
+            failed_eats: 0,
+            simple_food_eaten: 0,
+            medium_food_eaten: 0,
+            complex_food_eaten: 0,
         };
 
         // Mutate diet slightly

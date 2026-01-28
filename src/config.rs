@@ -48,6 +48,12 @@ pub struct Config {
     // Database tracking
     #[serde(default)]
     pub database: DatabaseConfig,
+    // Cognitive Gate system
+    #[serde(default)]
+    pub cognitive_gate: CognitiveGateConfig,
+    // Brain tax system - penalizes overly complex brains
+    #[serde(default)]
+    pub brain_tax: BrainTaxConfig,
 }
 
 /// Database configuration for individual organism tracking
@@ -70,6 +76,98 @@ impl Default for DatabaseConfig {
             url: "postgresql://primordial:primordial@localhost/primordial_v2".to_string(),
             snapshot_interval: 100,
             log_learning_events: false,
+        }
+    }
+}
+
+/// Cognitive Gate configuration - makes brain complexity necessary for eating
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CognitiveGateConfig {
+    /// Enable cognitive gate system
+    pub enabled: bool,
+    /// Tolerance for pattern matching (0.20 = brain can eat food 0.20 above its capability)
+    pub tolerance: f32,
+    /// Energy cost for failed eating attempt (frustration)
+    pub failure_cost: f32,
+    /// Food distribution: percentage of simple food (0.0-1.0)
+    pub simple_ratio: f32,
+    /// Food distribution: percentage of medium food (0.0-1.0)
+    pub medium_ratio: f32,
+    // Complex ratio is implicit: 1.0 - simple_ratio - medium_ratio
+
+    // Complexity ranges (with overlap for smoother transitions)
+    #[serde(default = "default_simple_min")]
+    pub simple_complexity_min: f32,
+    #[serde(default = "default_simple_max")]
+    pub simple_complexity_max: f32,
+    #[serde(default = "default_medium_min")]
+    pub medium_complexity_min: f32,
+    #[serde(default = "default_medium_max")]
+    pub medium_complexity_max: f32,
+    #[serde(default = "default_complex_min")]
+    pub complex_complexity_min: f32,
+    #[serde(default = "default_complex_max")]
+    pub complex_complexity_max: f32,
+
+    // Energy per food tier
+    #[serde(default = "default_simple_energy")]
+    pub simple_energy: f32,
+    #[serde(default = "default_medium_energy")]
+    pub medium_energy: f32,
+    #[serde(default = "default_complex_energy")]
+    pub complex_energy: f32,
+}
+
+// Default functions for serde
+fn default_simple_min() -> f32 { 0.00 }
+fn default_simple_max() -> f32 { 0.25 }
+fn default_medium_min() -> f32 { 0.20 }
+fn default_medium_max() -> f32 { 0.60 }
+fn default_complex_min() -> f32 { 0.55 }
+fn default_complex_max() -> f32 { 1.00 }
+fn default_simple_energy() -> f32 { 23.0 }
+fn default_medium_energy() -> f32 { 27.0 }
+fn default_complex_energy() -> f32 { 32.0 }
+
+impl Default for CognitiveGateConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            tolerance: 0.20,
+            failure_cost: 0.3,
+            simple_ratio: 0.75,
+            medium_ratio: 0.20,
+            // complex_ratio: 0.05 (implicit)
+            simple_complexity_min: 0.00,
+            simple_complexity_max: 0.25,
+            medium_complexity_min: 0.20,
+            medium_complexity_max: 0.60,
+            complex_complexity_min: 0.55,
+            complex_complexity_max: 1.00,
+            simple_energy: 23.0,
+            medium_energy: 27.0,
+            complex_energy: 32.0,
+        }
+    }
+}
+
+/// Brain tax configuration - penalizes overly complex brains
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BrainTaxConfig {
+    /// Enable brain tax
+    pub enabled: bool,
+    /// Layer threshold before tax applies
+    pub threshold: usize,
+    /// Energy cost per layer above threshold (per step)
+    pub cost_per_layer: f32,
+}
+
+impl Default for BrainTaxConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            threshold: 10,
+            cost_per_layer: 0.01,
         }
     }
 }
@@ -104,6 +202,9 @@ pub struct OrganismConfig {
     pub food_energy: f32,
     /// Movement energy cost
     pub move_cost: f32,
+    /// Extra metabolic cost per brain layer (0.0 = use default bonus system)
+    #[serde(default)]
+    pub brain_cost_per_layer: f32,
 }
 
 /// Neural network configuration
@@ -219,6 +320,8 @@ impl Default for Config {
             procedural_environment: EnvironmentConfig::default(),
             learning: LearningConfig::default(),
             database: DatabaseConfig::default(),
+            cognitive_gate: CognitiveGateConfig::default(),
+            brain_tax: BrainTaxConfig::default(),
         }
     }
 }
@@ -244,6 +347,7 @@ impl Default for OrganismConfig {
             metabolism_base: 0.3,   // Was 0.5 - reduced base cost
             food_energy: 30.0,      // Was 25.0 - more energy from food
             move_cost: 0.2,         // Was 0.3 - cheaper movement
+            brain_cost_per_layer: 0.0, // Default: use bonus system
         }
     }
 }

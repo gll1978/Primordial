@@ -123,6 +123,9 @@ pub struct World {
     // Database logging channel
     #[cfg(feature = "database")]
     pub db_sender: Option<std_mpsc::Sender<DbEvent>>,
+
+    // Cognitive Gate: Food complexity grid
+    pub complexity_grid: crate::grid::ComplexityGrid,
 }
 
 impl World {
@@ -140,6 +143,12 @@ impl World {
         // Initialize food grid
         let mut food_grid = FoodGrid::new(grid_size, config.world.food_max);
         food_grid.initialize(config.world.initial_food_density);
+
+        // Initialize complexity grid (Cognitive Gate)
+        let mut complexity_grid = crate::grid::ComplexityGrid::new(grid_size);
+        if config.cognitive_gate.enabled {
+            complexity_grid.initialize(&food_grid);
+        }
 
         // Initialize spatial index
         let spatial_index = SpatialIndex::new(grid_size);
@@ -274,6 +283,7 @@ impl World {
             next_large_prey_id: 0,
             #[cfg(feature = "database")]
             db_sender: None,
+            complexity_grid,
         };
 
         // Initial spatial index update
@@ -353,6 +363,12 @@ impl World {
         let diversity_history = DiversityHistory::new(100);
         let survival_analyzer = SurvivalAnalyzer::new();
 
+        // Initialize complexity grid (Cognitive Gate)
+        let mut complexity_grid = crate::grid::ComplexityGrid::new(grid_size);
+        if checkpoint.config.cognitive_gate.enabled {
+            complexity_grid.initialize(&checkpoint.food_grid);
+        }
+
         let mut world = Self {
             organisms: checkpoint.organisms,
             food_grid: checkpoint.food_grid,
@@ -401,6 +417,7 @@ impl World {
             next_large_prey_id: 0,
             #[cfg(feature = "database")]
             db_sender: None,
+            complexity_grid,
         };
 
         world.update_spatial_index();
@@ -1127,37 +1144,96 @@ impl World {
                     let org_x = self.organisms[idx].x;
                     let org_y = self.organisms[idx].y;
 
-                    // Check depletion level BEFORE eating
-                    let depletion = self.get_food_depletion(org_x, org_y);
+                    // Check if there's food available
+                    let available_food = self.food_grid.get(org_x, org_y);
+                    if available_food < 0.1 {
+                        // No food to eat
+                        continue;
+                    }
 
-                    // MODERATE MODE: Reduce effective food energy based on depletion
-                    let effective_food_energy = self.config.organisms.food_energy * (1.0 - depletion * 0.50);
+                    // COGNITIVE GATE CHECK
+                    if self.config.cognitive_gate.enabled {
+                        let cg = &self.config.cognitive_gate;
+                        let food_complexity = self.complexity_grid.get(org_x, org_y);
+                        let brain_capability = self.organisms[idx].brain.get_complexity_capability();
+                        let tolerance = cg.tolerance;
 
-                    // Patch proximity bonus: eating near a food patch gives 2x energy
-                    // This creates strong selective pressure for spatial memory
-                    let patch_bonus = if let Some(ref patches) = self.patch_world {
-                        if patches.get_nearest_patch(org_x, org_y, patches.config.patch_radius).is_some() {
-                            2.0
+                        if brain_capability >= (food_complexity - tolerance) {
+                            // SUCCESS: Brain can handle this food complexity
+                            // Determine tier and energy using configurable thresholds
+                            let food_tier = crate::grid::FoodTier::from_complexity_with_thresholds(
+                                food_complexity,
+                                cg.simple_complexity_max,
+                                cg.medium_complexity_max,
+                            );
+                            let food_energy = food_tier.energy_with_config(
+                                cg.simple_energy,
+                                cg.medium_energy,
+                                cg.complex_energy,
+                            );
+
+                            // Consume food
+                            let consumed = self.food_grid.consume(org_x, org_y, food_energy);
+                            self.organisms[idx].energy += consumed;
+                            self.organisms[idx].food_eaten += 1;
+                            self.organisms[idx].successful_eats += 1;
+
+                            // Track by tier
+                            match food_tier {
+                                crate::grid::FoodTier::Simple => self.organisms[idx].simple_food_eaten += 1,
+                                crate::grid::FoodTier::Medium => self.organisms[idx].medium_food_eaten += 1,
+                                crate::grid::FoodTier::Complex => self.organisms[idx].complex_food_eaten += 1,
+                            }
+
+                            // Clear complexity when food consumed
+                            self.complexity_grid.clear(org_x, org_y);
+
+                            // Record for spatial memory
+                            self.record_food_eaten(org_x, org_y);
+
+                            // Deplete nearby food patch
+                            if let Some(ref mut patches) = self.patch_world {
+                                if let Some(idx_p) = patches.get_nearest_patch(org_x, org_y, patches.config.patch_radius) {
+                                    patches.patches[idx_p].deplete(patches.config.depletion_rate, self.time);
+                                    if let Some(ref mut bt) = self.behavior_tracker {
+                                        let org_id = self.organisms[idx].id;
+                                        bt.track_patch_visit(org_id, self.time, idx_p);
+                                    }
+                                }
+                            }
                         } else {
-                            0.5 // Eating far from patches gives half energy
+                            // FAILURE: Brain too simple for this food
+                            self.organisms[idx].energy -= self.config.cognitive_gate.failure_cost;
+                            self.organisms[idx].failed_eats += 1;
+                            // Food remains - organism must find simpler food
                         }
                     } else {
-                        1.0
-                    };
-                    let effective_food_energy = effective_food_energy * patch_bonus;
+                        // COGNITIVE GATE DISABLED: Original behavior
+                        let depletion = self.get_food_depletion(org_x, org_y);
+                        let effective_food_energy = self.config.organisms.food_energy * (1.0 - depletion * 0.50);
 
-                    let result = self.organisms[idx].try_eat(&mut self.food_grid, effective_food_energy);
+                        let patch_bonus = if let Some(ref patches) = self.patch_world {
+                            if patches.get_nearest_patch(org_x, org_y, patches.config.patch_radius).is_some() {
+                                2.0
+                            } else {
+                                0.5
+                            }
+                        } else {
+                            1.0
+                        };
+                        let effective_food_energy = effective_food_energy * patch_bonus;
 
-                    // Record food consumption for spatial memory
-                    if matches!(result, crate::organism::ActionResult::Success) {
-                        self.record_food_eaten(org_x, org_y);
-                        // Deplete nearby food patch and track visit
-                        if let Some(ref mut patches) = self.patch_world {
-                            if let Some(idx_p) = patches.get_nearest_patch(org_x, org_y, patches.config.patch_radius) {
-                                patches.patches[idx_p].deplete(patches.config.depletion_rate, self.time);
-                                if let Some(ref mut bt) = self.behavior_tracker {
-                                    let org_id = self.organisms[idx].id;
-                                    bt.track_patch_visit(org_id, self.time, idx_p);
+                        let result = self.organisms[idx].try_eat(&mut self.food_grid, effective_food_energy);
+
+                        if matches!(result, crate::organism::ActionResult::Success) {
+                            self.record_food_eaten(org_x, org_y);
+                            if let Some(ref mut patches) = self.patch_world {
+                                if let Some(idx_p) = patches.get_nearest_patch(org_x, org_y, patches.config.patch_radius) {
+                                    patches.patches[idx_p].deplete(patches.config.depletion_rate, self.time);
+                                    if let Some(ref mut bt) = self.behavior_tracker {
+                                        let org_id = self.organisms[idx].id;
+                                        bt.track_patch_visit(org_id, self.time, idx_p);
+                                    }
                                 }
                             }
                         }
@@ -1742,6 +1818,12 @@ impl World {
             total_lifetime_reward: 0.0,
             successful_forages: 0,
             failed_forages: 0,
+            // Cognitive Gate
+            successful_eats: 0,
+            failed_eats: 0,
+            simple_food_eaten: 0,
+            medium_food_eaten: 0,
+            complex_food_eaten: 0,
         };
 
         // Mutate child's brain
@@ -1989,6 +2071,44 @@ impl World {
         // Random food spawning (also affected by season)
         if self.rng.gen::<f32>() < 0.01 * season_multiplier {
             self.food_grid.spawn_random(10.0 * season_multiplier, 0.001);
+        }
+
+        // COGNITIVE GATE: Assign complexity to new food
+        if self.config.cognitive_gate.enabled {
+            self.assign_complexity_to_new_food();
+        }
+    }
+
+    /// Assign complexity to cells with food but no complexity value (Cognitive Gate)
+    fn assign_complexity_to_new_food(&mut self) {
+        let cg = &self.config.cognitive_gate;
+        let simple_ratio = cg.simple_ratio;
+        let medium_ratio = cg.medium_ratio;
+
+        for y in 0..self.config.world.grid_size {
+            for x in 0..self.config.world.grid_size {
+                let xu = x as u8;
+                let yu = y as u8;
+
+                // If food exists but complexity is 0, assign new complexity
+                if self.food_grid.get(xu, yu) > 0.1 && self.complexity_grid.get(xu, yu) < 0.01 {
+                    let roll: f32 = self.rng.gen();
+
+                    // Use configurable complexity ranges
+                    let complexity = if roll < simple_ratio {
+                        // Simple food
+                        self.rng.gen_range(cg.simple_complexity_min..cg.simple_complexity_max)
+                    } else if roll < simple_ratio + medium_ratio {
+                        // Medium food
+                        self.rng.gen_range(cg.medium_complexity_min..cg.medium_complexity_max)
+                    } else {
+                        // Complex food
+                        self.rng.gen_range(cg.complex_complexity_min..cg.complex_complexity_max)
+                    };
+
+                    self.complexity_grid.set(xu, yu, complexity);
+                }
+            }
         }
     }
 

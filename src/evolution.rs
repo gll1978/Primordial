@@ -99,6 +99,12 @@ impl EvolutionEngine {
             total_lifetime_reward: 0.0,
             successful_forages: 0,
             failed_forages: 0,
+            // Cognitive Gate
+            successful_eats: 0,
+            failed_eats: 0,
+            simple_food_eaten: 0,
+            medium_food_eaten: 0,
+            complex_food_eaten: 0,
         }
     }
 
