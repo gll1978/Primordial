@@ -23,6 +23,7 @@ pub enum DbEvent {
         step: u64,
         x: u8,
         y: u8,
+        brain_layers: i32,
         brain_neurons: i32,
         brain_connections: i32,
         is_predator: bool,
@@ -50,6 +51,7 @@ pub enum DbEvent {
         kills: u16,
         offspring: u16,
         food_eaten: u32,
+        brain_layers: i32,
         brain_neurons: i32,
         brain_connections: i32,
         is_predator: bool,
@@ -75,6 +77,7 @@ pub enum DbEvent {
         max_generation: i16,
         avg_energy: f32,
         avg_age: f32,
+        avg_brain_layers: f32,
         avg_brain_neurons: f32,
         avg_brain_connections: f32,
         predator_count: i32,
@@ -299,11 +302,11 @@ impl Database {
         for event in batch.drain(..) {
             if let DbEvent::OrganismBirth {
                 organism_id, lineage_id, generation, parent1_id, parent2_id,
-                step, x, y, brain_neurons, brain_connections, is_predator,
+                step, x, y, brain_layers, brain_neurons, brain_connections, is_predator,
             } = event
             {
                 let _ = sqlx::query(
-                    "INSERT INTO organisms (run_id, organism_id, lineage_id, generation, parent1_id, parent2_id, birth_step, birth_x, birth_y, brain_neurons, brain_connections, is_predator) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)"
+                    "INSERT INTO organisms (run_id, organism_id, lineage_id, generation, parent1_id, parent2_id, birth_step, birth_x, birth_y, brain_layers, brain_neurons, brain_connections, is_predator) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)"
                 )
                 .bind(run_id)
                 .bind(organism_id as i64)
@@ -314,6 +317,7 @@ impl Database {
                 .bind(step as i64)
                 .bind(x as i16)
                 .bind(y as i16)
+                .bind(brain_layers)
                 .bind(brain_neurons)
                 .bind(brain_connections)
                 .bind(is_predator)
@@ -377,12 +381,12 @@ impl Database {
         for event in batch.drain(..) {
             if let DbEvent::OrganismSnapshot {
                 step, organism_id, x, y, energy, health, age, size,
-                kills, offspring, food_eaten, brain_neurons, brain_connections,
+                kills, offspring, food_eaten, brain_layers, brain_neurons, brain_connections,
                 is_predator, last_action,
             } = event
             {
                 let _ = sqlx::query(
-                    "INSERT INTO organism_snapshots (run_id, step, organism_id, x, y, energy, health, age, size, kills, offspring, food_eaten, brain_neurons, brain_connections, is_predator, last_action) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)"
+                    "INSERT INTO organism_snapshots (run_id, step, organism_id, x, y, energy, health, age, size, kills, offspring, food_eaten, brain_layers, brain_neurons, brain_connections, is_predator, last_action) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)"
                 )
                 .bind(run_id)
                 .bind(step as i64)
@@ -396,6 +400,7 @@ impl Database {
                 .bind(kills as i16)
                 .bind(offspring as i16)
                 .bind(food_eaten as i32)
+                .bind(brain_layers)
                 .bind(brain_neurons)
                 .bind(brain_connections)
                 .bind(is_predator)
@@ -485,12 +490,12 @@ impl Database {
     async fn write_world_snapshot(pool: &PgPool, run_id: Uuid, event: DbEvent) {
         if let DbEvent::WorldSnapshot {
             step, population, births, deaths, kills, max_generation,
-            avg_energy, avg_age, avg_brain_neurons, avg_brain_connections,
+            avg_energy, avg_age, avg_brain_layers, avg_brain_neurons, avg_brain_connections,
             predator_count, lineage_count, total_food,
         } = event
         {
             let _ = sqlx::query(
-                "INSERT INTO world_snapshots (run_id, step, population, births, deaths, kills, max_generation, avg_energy, avg_age, avg_brain_neurons, avg_brain_connections, predator_count, lineage_count, total_food) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)"
+                "INSERT INTO world_snapshots (run_id, step, population, births, deaths, kills, max_generation, avg_energy, avg_age, avg_brain_layers, avg_brain_neurons, avg_brain_connections, predator_count, lineage_count, total_food) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)"
             )
             .bind(run_id)
             .bind(step as i64)
@@ -501,6 +506,7 @@ impl Database {
             .bind(max_generation)
             .bind(avg_energy)
             .bind(avg_age)
+            .bind(avg_brain_layers)
             .bind(avg_brain_neurons)
             .bind(avg_brain_connections)
             .bind(predator_count)

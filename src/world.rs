@@ -296,6 +296,7 @@ impl World {
                 step: 0,
                 x: org.x,
                 y: org.y,
+                brain_layers: org.brain.complexity() as i32,
                 brain_neurons: org.brain.total_hidden_neurons() as i32,
                 brain_connections: org.brain.parameter_count() as i32,
                 is_predator: org.is_predator,
@@ -1472,6 +1473,7 @@ impl World {
                         step: self.time,
                         x: child.x,
                         y: child.y,
+                        brain_layers: child.brain.complexity() as i32,
                         brain_neurons: child.brain.total_hidden_neurons() as i32,
                         brain_connections: child.brain.parameter_count() as i32,
                         is_predator: child.is_predator,
@@ -1597,6 +1599,7 @@ impl World {
                         step: self.time,
                         x: child.x,
                         y: child.y,
+                        brain_layers: child.brain.complexity() as i32,
                         brain_neurons: child.brain.total_hidden_neurons() as i32,
                         brain_connections: child.brain.parameter_count() as i32,
                         is_predator: child.is_predator,
@@ -2048,6 +2051,8 @@ impl World {
             if pop > 0 {
                 let avg_energy = alive.iter().map(|o| o.energy).sum::<f32>() / pop as f32;
                 let avg_age = alive.iter().map(|o| o.age as f32).sum::<f32>() / pop as f32;
+                let avg_layers =
+                    alive.iter().map(|o| o.brain.complexity() as f32).sum::<f32>() / pop as f32;
                 let avg_neurons =
                     alive.iter().map(|o| o.brain.total_hidden_neurons() as f32).sum::<f32>() / pop as f32;
                 let avg_conns = alive
@@ -2066,6 +2071,7 @@ impl World {
                     max_generation: self.generation_max as i16,
                     avg_energy,
                     avg_age,
+                    avg_brain_layers: avg_layers,
                     avg_brain_neurons: avg_neurons,
                     avg_brain_connections: avg_conns,
                     predator_count: predator_count as i32,
@@ -2094,6 +2100,7 @@ impl World {
                     kills: org.kills,
                     offspring: org.offspring_count,
                     food_eaten: org.food_eaten,
+                    brain_layers: org.brain.complexity() as i32,
                     brain_neurons: org.brain.total_hidden_neurons() as i32,
                     brain_connections: org.brain.parameter_count() as i32,
                     is_predator: org.is_predator,
