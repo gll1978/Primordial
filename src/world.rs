@@ -11,6 +11,7 @@ use crate::ecology::large_prey::{CooperationManager, LargePrey};
 use crate::ecology::predation;
 use crate::ecology::seasons::SeasonalSystem;
 use crate::ecology::terrain::TerrainGrid;
+use crate::ecology::dynamic_obstacles::DynamicObstacleSystem;
 use crate::evolution::EvolutionEngine;
 use crate::genetics::crossover::CrossoverSystem;
 use crate::genetics::diversity::DiversityHistory;
@@ -126,6 +127,9 @@ pub struct World {
 
     // Cognitive Gate: Food complexity grid
     pub complexity_grid: crate::grid::ComplexityGrid,
+
+    // Phase 2 Feature 4: Dynamic Obstacles
+    pub dynamic_obstacle_system: Option<DynamicObstacleSystem>,
 }
 
 impl World {
@@ -208,6 +212,13 @@ impl World {
         // Initialize depletion system
         let depletion_system = DepletionSystem::new(grid_size);
 
+        // Initialize dynamic obstacles (Phase 2 Feature 4)
+        let dynamic_obstacle_system = if config.dynamic_obstacles.enabled {
+            Some(DynamicObstacleSystem::new(&config.dynamic_obstacles, grid_size as u8, &mut rng))
+        } else {
+            None
+        };
+
         // Initialize genetics systems
         let mut phylogeny = PhylogeneticTree::new();
         let sexual_reproduction = SexualReproductionSystem::new();
@@ -284,6 +295,7 @@ impl World {
             #[cfg(feature = "database")]
             db_sender: None,
             complexity_grid,
+            dynamic_obstacle_system,
         };
 
         // Initial spatial index update
@@ -353,6 +365,13 @@ impl World {
         // New depletion system (state not preserved in checkpoint)
         let depletion_system = DepletionSystem::new(grid_size);
 
+        // New dynamic obstacle system (state not preserved in checkpoint)
+        let dynamic_obstacle_system = if checkpoint.config.dynamic_obstacles.enabled {
+            Some(DynamicObstacleSystem::new(&checkpoint.config.dynamic_obstacles, grid_size as u8, &mut checkpoint_rng))
+        } else {
+            None
+        };
+
         // New genetics systems (state not preserved in checkpoint)
         let phylogeny = PhylogeneticTree::new();
         let sexual_reproduction = SexualReproductionSystem::new();
@@ -418,6 +437,7 @@ impl World {
             #[cfg(feature = "database")]
             db_sender: None,
             complexity_grid,
+            dynamic_obstacle_system,
         };
 
         world.update_spatial_index();
@@ -448,6 +468,11 @@ impl World {
 
         // Phase 0: Update seasonal system
         self.seasonal_system.update(self.time);
+
+        // Phase 0.5: Update dynamic obstacles (Phase 2 Feature 4)
+        if let Some(ref mut obstacle_system) = self.dynamic_obstacle_system {
+            obstacle_system.update(self.time, &mut self.rng);
+        }
 
         // Phase 1: Parallel sensing and thinking
         let actions = self.compute_actions();
@@ -1454,9 +1479,10 @@ impl World {
                                 cg.complex_energy,
                             );
 
-                            // Consume food
+                            // Consume food (with seasonal energy multiplier - Phase 2 Feature 4)
                             let consumed = self.food_grid.consume(org_x, org_y, food_energy);
-                            self.organisms[idx].energy += consumed;
+                            let seasonal_energy = consumed * self.seasonal_system.energy_multiplier();
+                            self.organisms[idx].energy += seasonal_energy;
                             self.organisms[idx].food_eaten += 1;
                             self.organisms[idx].successful_eats += 1;
 
@@ -1503,7 +1529,9 @@ impl World {
                         } else {
                             1.0
                         };
-                        let effective_food_energy = effective_food_energy * patch_bonus;
+                        // Apply patch bonus and seasonal multiplier (Phase 2 Feature 4)
+                        let seasonal_mult = self.seasonal_system.energy_multiplier();
+                        let effective_food_energy = effective_food_energy * patch_bonus * seasonal_mult;
 
                         let result = self.organisms[idx].try_eat(&mut self.food_grid, effective_food_energy);
 
@@ -1692,6 +1720,13 @@ impl World {
             let target_terrain = self.terrain_grid.get(new_xu, new_yu);
             if !target_terrain.is_passable(org.is_aquatic) {
                 return; // Can't move there
+            }
+        }
+
+        // Dynamic obstacle check (Phase 2 Feature 4)
+        if let Some(ref obstacle_system) = self.dynamic_obstacle_system {
+            if obstacle_system.is_blocked(new_xu, new_yu) {
+                return; // Blocked by dynamic obstacle
             }
         }
 

@@ -221,3 +221,13 @@ memory:
   max_buffer_size: 40        # Maximum buffer size (frames)
   decay_rate: 0.05           # 5% reward decay per step
   features_per_frame: 8      # Key sensory features stored per frame
+
+# Phase 2 Feature 4: Dynamic Obstacles
+dynamic_obstacles:
+  enabled: true              # Enable dynamic obstacles
+  max_obstacles: 30          # Maximum number of obstacles
+  initial_obstacles: 15      # Start with 15 obstacles
+  movement_chance: 0.01      # 1% chance to move per step
+  spawn_rate: 0.001          # New obstacles appear rate
+  despawn_rate: 0.0005       # Old obstacles disappear rate
+  min_lifetime: 100          # Minimum steps before despawn possible

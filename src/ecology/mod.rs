@@ -7,8 +7,10 @@
 //! - Terrain system (movement costs, food modifiers)
 //! - Resource depletion (over-exploitation tracking)
 //! - Large prey and cooperation (B3)
+//! - Dynamic obstacles (Phase 2 Feature 4)
 
 pub mod depletion;
+pub mod dynamic_obstacles;
 pub mod environment_manager;
 pub mod food_patches;
 pub mod food_types;
@@ -18,6 +20,7 @@ pub mod seasons;
 pub mod terrain;
 
 pub use depletion::{DepletionConfig, DepletionState, DepletionSystem};
+pub use dynamic_obstacles::{DynamicObstacle, DynamicObstacleConfig, DynamicObstacleSystem};
 pub use environment_manager::{EnvironmentConfig, EnvironmentManager};
 pub use food_patches::{FoodPatch, PatchConfig, PatchWorld};
 pub use food_types::{DietSpecialization, FoodCell, FoodConfig};

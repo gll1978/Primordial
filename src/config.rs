@@ -2,7 +2,7 @@
 //!
 //! Supports YAML configuration files with sensible defaults.
 
-use crate::ecology::{DepletionConfig, EnvironmentConfig, FoodConfig, LargePreyConfig, PredationConfig, SeasonsConfig, TerrainConfig};
+use crate::ecology::{DepletionConfig, DynamicObstacleConfig, EnvironmentConfig, FoodConfig, LargePreyConfig, PredationConfig, SeasonsConfig, TerrainConfig};
 use crate::genetics::sex::SexualReproductionConfig;
 use crate::neural::LearningConfig;
 use serde::{Deserialize, Serialize};
@@ -62,6 +62,9 @@ pub struct Config {
     // Phase 2 Feature 2: Short-Term Memory System
     #[serde(default)]
     pub memory: MemoryConfig,
+    // Phase 2 Feature 4: Dynamic Obstacles
+    #[serde(default)]
+    pub dynamic_obstacles: DynamicObstacleConfig,
 }
 
 /// Database configuration for individual organism tracking
@@ -414,6 +417,7 @@ impl Default for Config {
             sensory: SensoryConfig::default(),
             day_night: DayNightConfig::default(),
             memory: MemoryConfig::default(),
+            dynamic_obstacles: DynamicObstacleConfig::default(),
         }
     }
 }

@@ -42,6 +42,19 @@ impl Season {
         }
     }
 
+    /// Get energy per food multiplier (Phase 2 Feature 4)
+    /// Winter food is rare but more valuable (animals store more fat)
+    /// Based on Notion specs: Spring: 30, Summer: 25, Autumn: 28, Winter: 35
+    /// Normalized to Summer = 1.0
+    pub fn energy_multiplier(&self) -> f32 {
+        match self {
+            Season::Spring => 1.2,  // 30/25 = 1.2
+            Season::Summer => 1.0,  // baseline
+            Season::Autumn => 1.12, // 28/25 = 1.12
+            Season::Winter => 1.4,  // 35/25 = 1.4 (rare but valuable)
+        }
+    }
+
     /// Get current season based on world time
     pub fn from_time(time: u64, season_length: u64) -> Season {
         if season_length == 0 {
@@ -135,6 +148,16 @@ impl SeasonalSystem {
             1.0
         }
     }
+
+    /// Get energy per food multiplier (Phase 2 Feature 4)
+    /// Food gives more energy in winter (rare but valuable)
+    pub fn energy_multiplier(&self) -> f32 {
+        if self.enabled {
+            self.current_season.energy_multiplier()
+        } else {
+            1.0
+        }
+    }
 }
 
 /// Seasons configuration
@@ -206,5 +229,36 @@ mod tests {
         let system = SeasonalSystem::new(&config);
 
         assert!((system.food_multiplier() - 1.0).abs() < 0.01); // Always 1.0 when disabled
+    }
+
+    #[test]
+    fn test_energy_multipliers() {
+        // Phase 2 Feature 4: Seasonal energy per food
+        // Winter food is rare but more valuable
+        assert!((Season::Spring.energy_multiplier() - 1.2).abs() < 0.01);
+        assert!((Season::Summer.energy_multiplier() - 1.0).abs() < 0.01);
+        assert!((Season::Autumn.energy_multiplier() - 1.12).abs() < 0.01);
+        assert!((Season::Winter.energy_multiplier() - 1.4).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_seasonal_system_energy() {
+        let config = SeasonsConfig::default();
+        let mut system = SeasonalSystem::new(&config);
+
+        // Spring
+        assert!((system.energy_multiplier() - 1.2).abs() < 0.01);
+
+        // Summer
+        system.update(1000);
+        assert!((system.energy_multiplier() - 1.0).abs() < 0.01);
+
+        // Autumn
+        system.update(2000);
+        assert!((system.energy_multiplier() - 1.12).abs() < 0.01);
+
+        // Winter
+        system.update(3000);
+        assert!((system.energy_multiplier() - 1.4).abs() < 0.01);
     }
 }
