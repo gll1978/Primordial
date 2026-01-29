@@ -1,6 +1,6 @@
 # Rust build artifacts
 /target/
-Cargo.lock
+# Keep Cargo.lock for reproducibility (it's a binary, not a library)
 
 # IDE
 .idea/
@@ -14,9 +14,17 @@ Thumbs.db
 
 # Simulation output (large files)
 /output/
+/output_*/
+/phase1_*/
+/phase2_*/
+/test_*/
 /validation_*/
 *.bin
 
 # Logs
 *.log
-logs/
+/logs/
+
+# Test configs (keep only main config.yaml)
+config_*.yaml
+python_match*.yaml
