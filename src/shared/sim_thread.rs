@@ -198,7 +198,6 @@ fn run_simulation(
     };
 
     // Timing control
-    let base_step_duration = Duration::from_micros(1000); // Base: 1000 steps/s max
     let mut last_step = Instant::now();
     let mut steps_since_snapshot = 0u32;
     let snapshot_interval = 3u32; // Send snapshot every N steps
@@ -216,7 +215,10 @@ fn run_simulation(
                     world.step();
                     let _ = snapshot_tx.send(WorldSnapshot::from_world(&world, selected_id));
                 }
-                SimCommand::SetSpeed(s) => speed = s.clamp(0.1, 10.0),
+                SimCommand::SetSpeed(s) => {
+                    speed = s.clamp(0.1, 10.0);
+                    log::info!("Speed set to: {}", speed);
+                }
                 SimCommand::SelectOrganism(id) => {
                     selected_id = id;
                     let _ = snapshot_tx.send(WorldSnapshot::from_world(&world, selected_id));
@@ -355,13 +357,35 @@ fn run_simulation(
 
         // Run simulation step if not paused and not at limit
         if state == SimState::Running && !world.is_extinct() && !reached_max_steps {
-            let step_duration =
-                Duration::from_micros((base_step_duration.as_micros() as f32 / speed) as u64);
+            // Speed control:
+            // - speed >= 1.0: do multiple steps per cycle (speed 2.0 = 2 steps, speed 10.0 = 10 steps)
+            // - speed < 1.0: add delay between steps (speed 0.5 = half speed, speed 0.1 = 10x slower)
 
-            if last_step.elapsed() >= step_duration {
-                world.step();
-                last_step = Instant::now();
-                steps_since_snapshot += 1;
+            let should_step = if speed < 1.0 {
+                // For slow speeds, add delay
+                let slow_duration = Duration::from_millis((10.0 / speed) as u64);
+                if last_step.elapsed() >= slow_duration {
+                    last_step = Instant::now();
+                    true
+                } else {
+                    false
+                }
+            } else {
+                // For normal/fast speeds, always step (multiple times if speed > 1)
+                true
+            };
+
+            if should_step {
+                // Number of steps per cycle based on speed
+                let steps_per_cycle = if speed >= 1.0 { speed as usize } else { 1 };
+
+                for _ in 0..steps_per_cycle {
+                    if world.is_extinct() || (max_steps > 0 && world.time >= max_steps) {
+                        break;
+                    }
+                    world.step();
+                    steps_since_snapshot += 1;
+                }
 
                 // Auto-save checkpoint periodically
                 if checkpoint_mgr.should_save(world.time) {
