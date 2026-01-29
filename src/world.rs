@@ -627,10 +627,10 @@ impl World {
                         &cognitive,
                     );
 
-                    // Forward pass through neural network (95 inputs -> 15 outputs)
+                    // Forward pass through neural network (95 inputs -> 19 outputs)
                     let outputs = org.brain.forward(&inputs);
-                    let mut output_array = [0.0f32; 15];
-                    for (i, &val) in outputs.iter().take(15).enumerate() {
+                    let mut output_array = [0.0f32; 19];
+                    for (i, &val) in outputs.iter().take(19).enumerate() {
                         output_array[i] = val;
                     }
 
@@ -647,10 +647,10 @@ impl World {
                         &cognitive,
                     );
 
-                    // Forward pass through neural network (75 inputs -> 15 outputs)
+                    // Forward pass through neural network (75 inputs -> 19 outputs)
                     let outputs = org.brain.forward(&inputs);
-                    let mut output_array = [0.0f32; 15];
-                    for (i, &val) in outputs.iter().take(15).enumerate() {
+                    let mut output_array = [0.0f32; 19];
+                    for (i, &val) in outputs.iter().take(19).enumerate() {
                         output_array[i] = val;
                     }
 
@@ -1449,6 +1449,7 @@ impl World {
             let escape_bonus = self.calculate_escape_bonus(idx, &action);
 
             match action {
+                // Cardinal directions
                 Action::MoveNorth => {
                     self.try_move_with_terrain(idx, 0, -1 * (1 + escape_bonus), move_cost);
                 }
@@ -1460,6 +1461,19 @@ impl World {
                 }
                 Action::MoveWest => {
                     self.try_move_with_terrain(idx, -1 - escape_bonus, 0, move_cost);
+                }
+                // Diagonal directions (slightly higher cost for realism: sqrt(2) ≈ 1.41)
+                Action::MoveNorthEast => {
+                    self.try_move_with_terrain(idx, 1 + escape_bonus, -1 * (1 + escape_bonus), move_cost * 1.41);
+                }
+                Action::MoveSouthEast => {
+                    self.try_move_with_terrain(idx, 1 + escape_bonus, 1 + escape_bonus, move_cost * 1.41);
+                }
+                Action::MoveSouthWest => {
+                    self.try_move_with_terrain(idx, -1 - escape_bonus, 1 + escape_bonus, move_cost * 1.41);
+                }
+                Action::MoveNorthWest => {
+                    self.try_move_with_terrain(idx, -1 - escape_bonus, -1 * (1 + escape_bonus), move_cost * 1.41);
                 }
                 Action::Eat => {
                     let org_x = self.organisms[idx].x;

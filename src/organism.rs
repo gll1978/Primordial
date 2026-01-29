@@ -19,10 +19,17 @@ pub type LineageId = u32;
 /// Possible actions an organism can take
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum Action {
+    // Cardinal directions (4)
     MoveNorth,
     MoveEast,
     MoveSouth,
     MoveWest,
+    // Diagonal directions (4) - 8-directional movement
+    MoveNorthEast,
+    MoveSouthEast,
+    MoveSouthWest,
+    MoveNorthWest,
+    // Other actions
     Eat,
     Reproduce,
     Attack,
@@ -1013,10 +1020,10 @@ impl Organism {
 
     /// Process inputs through neural network (legacy 75 inputs)
     #[inline]
-    pub fn think(&mut self, inputs: &[f32; 75]) -> [f32; 15] {
+    pub fn think(&mut self, inputs: &[f32; 75]) -> [f32; 19] {
         let outputs = self.brain.forward(inputs);
-        let mut result = [0.0f32; 15];
-        for (i, &val) in outputs.iter().take(15).enumerate() {
+        let mut result = [0.0f32; 19];
+        for (i, &val) in outputs.iter().take(19).enumerate() {
             result[i] = val;
         }
         result
@@ -1024,17 +1031,17 @@ impl Organism {
 
     /// Process inputs through neural network (enhanced 95 inputs)
     #[inline]
-    pub fn think_enhanced(&mut self, inputs: &[f32; 95]) -> [f32; 15] {
+    pub fn think_enhanced(&mut self, inputs: &[f32; 95]) -> [f32; 19] {
         let outputs = self.brain.forward(inputs);
-        let mut result = [0.0f32; 15];
-        for (i, &val) in outputs.iter().take(15).enumerate() {
+        let mut result = [0.0f32; 19];
+        for (i, &val) in outputs.iter().take(19).enumerate() {
             result[i] = val;
         }
         result
     }
 
-    /// Decide action based on neural network outputs (15 outputs)
-    pub fn decide_action(&self, outputs: &[f32; 15]) -> Action {
+    /// Decide action based on neural network outputs (19 outputs)
+    pub fn decide_action(&self, outputs: &[f32; 19]) -> Action {
         // Find max output index
         let mut max_idx = 0;
         let mut max_val = outputs[0];
@@ -1047,21 +1054,28 @@ impl Organism {
         }
 
         match max_idx {
+            // Cardinal directions
             0 => Action::MoveNorth,
             1 => Action::MoveEast,
             2 => Action::MoveSouth,
             3 => Action::MoveWest,
-            4 => Action::Eat,
-            5 => Action::Reproduce,
-            6 => Action::Attack,
-            7 => Action::Signal(outputs[7]),
-            8 => Action::Wait,
-            9 => Action::SignalDanger,   // Social communication
-            10 => Action::SignalFood,    // Social communication
-            11 => Action::ProposeCooperation,  // B3: Cooperation actions
-            12 => Action::AcceptCooperation,
-            13 => Action::RejectCooperation,
-            14 => Action::AttackLargePrey,
+            // Diagonal directions
+            4 => Action::MoveNorthEast,
+            5 => Action::MoveSouthEast,
+            6 => Action::MoveSouthWest,
+            7 => Action::MoveNorthWest,
+            // Other actions
+            8 => Action::Eat,
+            9 => Action::Reproduce,
+            10 => Action::Attack,
+            11 => Action::Signal(outputs[11]),
+            12 => Action::Wait,
+            13 => Action::SignalDanger,   // Social communication
+            14 => Action::SignalFood,     // Social communication
+            15 => Action::ProposeCooperation,  // B3: Cooperation actions
+            16 => Action::AcceptCooperation,
+            17 => Action::RejectCooperation,
+            18 => Action::AttackLargePrey,
             _ => Action::Wait,
         }
     }

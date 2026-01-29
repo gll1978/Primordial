@@ -524,8 +524,8 @@ impl Default for NeuralConfig {
             // 75 inputs (legacy): 24 base + 8 spatial + 3 temporal + 3 social + 10 sequential + 12 predator + 15 cooperation
             // 95 inputs (enhanced): +8 vision + 8 olfaction + 4 audition
             n_inputs: 75,
-            // 15 outputs: 4 movement + eat + reproduce + attack + signal + wait + 2 social + 3 cooperation
-            n_outputs: 15,
+            // 19 outputs: 8 movement (4 cardinal + 4 diagonal) + eat + reproduce + attack + signal + wait + 2 social + 3 cooperation + 1 large prey
+            n_outputs: 19,
             use_instincts: false, // Instincts prevent brain evolution
         }
     }
