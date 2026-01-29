@@ -372,13 +372,6 @@ ee97060 Implement Cognitive Gate system for brain evolution
 
 ## Scientific Impact
 
-### Publication Targets
-
-- Nature
-- Science
-- PNAS
-- PLOS Computational Biology
-- Artificial Life Journal
 
 ### Key Contributions
 
