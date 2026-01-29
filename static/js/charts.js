@@ -290,10 +290,11 @@ const SpeciesChart = {
         }
 
         this.ctx = this.canvas.getContext('2d');
+        console.log('SpeciesChart initialized, canvas:', this.canvas, 'ctx:', this.ctx);
 
         // Subscribe to snapshot updates
         AppState.subscribe('snapshotUpdate', (snapshot) => {
-            if (snapshot) {
+            if (snapshot && snapshot.organisms) {
                 this.updateData(snapshot.organisms);
                 this.render();
             }
@@ -305,8 +306,8 @@ const SpeciesChart = {
             this.render();
         });
 
-        // Initial render
-        this.render();
+        // Delay initial render to ensure DOM is ready
+        setTimeout(() => this.render(), 100);
     },
 
     /**
@@ -339,12 +340,22 @@ const SpeciesChart = {
      * Render the pie chart
      */
     render() {
-        if (!this.canvas || !this.ctx) return;
+        if (!this.canvas || !this.ctx) {
+            console.warn('SpeciesChart render: canvas or ctx missing');
+            return;
+        }
 
-        // Update canvas size dynamically
-        const containerWidth = this.canvas.offsetWidth || this.canvas.parentElement?.offsetWidth || 250;
+        // Update canvas size dynamically - get parent width or use minimum
+        let containerWidth = this.canvas.parentElement?.clientWidth ||
+                            this.canvas.offsetWidth ||
+                            250;
+        // Ensure minimum width
+        containerWidth = Math.max(containerWidth, 200);
+
         this.canvas.width = containerWidth;
         this.canvas.height = 150;
+
+        console.log('SpeciesChart render: width=', containerWidth, 'data=', this.data);
 
         const ctx = this.ctx;
         const width = this.canvas.width;
