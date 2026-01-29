@@ -207,7 +207,11 @@ cargo build --release
 # Run simulation (50,000 steps)
 cargo run --release --bin primordial -- run --steps 50000
 
-# Run with GUI (requires gui feature)
+# Run with Web UI (recommended)
+cargo run --release --features web --bin primordial-web
+# Open http://127.0.0.1:8080 in your browser
+
+# Run with desktop GUI (requires gui feature)
 cargo run --release --features gui --bin primordial-gui
 ```
 
@@ -276,7 +280,7 @@ seasons:
 | organisms | initial_population | 500 | Starting population |
 | organisms | reproduction_threshold | 50.0 | Energy needed to reproduce |
 | neural | n_inputs | 95 | Sensory input dimension |
-| neural | n_outputs | 15 | Action output dimension |
+| neural | n_outputs | 19 | Action output dimension (8 movement + 11 other) |
 | cognitive_gate | enabled | true | Enable cognitive gates |
 | cognitive_gate | complex_food_layers | 20 | Layers for complex food |
 | memory | base_capacity | 10 | Base memory frames |
@@ -311,8 +315,25 @@ primordial/
 │   │   ├── terrain.rs      # Multi-terrain system
 │   │   ├── seasons.rs      # Seasonal cycles
 │   │   └── food_patches.rs # Spatial food patterns
+│   ├── shared/             # Shared code (GUI/Web)
+│   │   ├── commands.rs     # Simulation commands
+│   │   ├── snapshot.rs     # World state snapshots
+│   │   └── sim_thread.rs   # Simulation thread handle
+│   ├── web/                # Web UI (Axum + WebSocket)
+│   │   ├── server.rs       # HTTP/WS server
+│   │   ├── routes.rs       # REST API endpoints
+│   │   ├── websocket.rs    # Real-time streaming
+│   │   └── state.rs        # Shared application state
 │   ├── database.rs         # PostgreSQL integration
-│   └── gui/                # Graphical interface
+│   └── gui/                # egui desktop interface
+├── static/                 # Web UI frontend
+│   ├── index.html          # Main page
+│   ├── css/style.css       # Styles
+│   └── js/                 # JavaScript modules
+│       ├── main.js         # Entry point
+│       ├── canvas.js       # World renderer
+│       ├── websocket.js    # WebSocket client
+│       └── charts.js       # Population/brain graphs
 ├── tests/                  # Integration tests
 ├── benches/                # Performance benchmarks
 ├── configs/                # Example configurations
@@ -359,6 +380,8 @@ cargo bench
 ### Git History
 
 ```
+e921733 feat: Add 8-directional movement (diagonal directions)
+674bd16 feat: Implement Web UI with Axum + WebSocket + Canvas 2D
 0c1835e Clean up repository: remove test files and outputs
 127679d Implement anti-bottleneck diversity mechanisms and GUI improvements
 7ade7a3 Implement Phase 2 Feature 4: Dynamic World Environment
@@ -385,6 +408,42 @@ ee97060 Implement Cognitive Gate system for brain evolution
 
 ---
 
+## Recent Updates
+
+### Web UI (January 2026)
+
+Modern browser-based interface replacing the egui GUI:
+
+- **Backend:** Rust + Axum + WebSocket for real-time streaming
+- **Frontend:** Vanilla JS + Canvas 2D for lightweight visualization
+- **Features:** Live world view, population/brain charts, organism selection, settings panel
+
+```bash
+# Run with Web UI
+cargo run --release --features web --bin primordial-web
+
+# Open browser at http://127.0.0.1:8080
+```
+
+### 8-Directional Movement (January 2026)
+
+Organisms can now move in 8 directions (cardinal + diagonal):
+
+| Direction | dx | dy | Cost |
+|-----------|----|----|------|
+| North | 0 | -1 | 1.0× |
+| East | +1 | 0 | 1.0× |
+| South | 0 | +1 | 1.0× |
+| West | -1 | 0 | 1.0× |
+| NorthEast | +1 | -1 | 1.41× |
+| SouthEast | +1 | +1 | 1.41× |
+| SouthWest | -1 | +1 | 1.41× |
+| NorthWest | -1 | -1 | 1.41× |
+
+Neural outputs increased from 15 to 19 to accommodate diagonal movement.
+
+---
+
 ## Future Work
 
 - [ ] **Phase 3:** Comprehensive testing framework
@@ -392,7 +451,7 @@ ee97060 Implement Cognitive Gate system for brain evolution
 - [ ] **Social Behavior:** Communication between organisms
 - [ ] **Tool Use:** Environmental manipulation
 - [ ] **Predator-Prey Dynamics:** Arms race evolution
-- [ ] **Web Interface:** Browser-based visualization
+- [x] ~~**Web Interface:** Browser-based visualization~~ ✅ Completed
 
 ---
 
