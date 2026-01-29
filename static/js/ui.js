@@ -8,10 +8,12 @@ const UI = {
      */
     init() {
         this.bindControls();
+        this.bindCheckpointControls();
         this.bindSettings();
         this.bindCanvasControls();
         this.bindCollapsibles();
         this.subscribeToState();
+        this.loadLatestCheckpointPath();
     },
 
     /**
@@ -50,6 +52,138 @@ const UI = {
             const speed = parseFloat(e.target.value);
             await API.setSpeed(speed);
         });
+    },
+
+    /**
+     * Bind checkpoint controls
+     */
+    bindCheckpointControls() {
+        // Save checkpoint
+        const btnSave = document.getElementById('btn-save-checkpoint');
+        if (btnSave) {
+            btnSave.addEventListener('click', async () => {
+                btnSave.disabled = true;
+                btnSave.textContent = 'Saving...';
+                try {
+                    const result = await API.saveCheckpoint();
+                    this.showCheckpointStatus(result.message, result.success);
+                    if (result.path) {
+                        document.getElementById('checkpoint-path').value = result.path;
+                    }
+                    await this.refreshCheckpointList();
+                } catch (e) {
+                    this.showCheckpointStatus('Save failed: ' + e.message, false);
+                } finally {
+                    btnSave.disabled = false;
+                    btnSave.textContent = 'Save';
+                }
+            });
+        }
+
+        // Load checkpoint
+        const btnLoad = document.getElementById('btn-load-checkpoint');
+        if (btnLoad) {
+            btnLoad.addEventListener('click', async () => {
+                const path = document.getElementById('checkpoint-path').value;
+                if (!path) {
+                    this.showCheckpointStatus('No checkpoint path specified', false);
+                    return;
+                }
+                btnLoad.disabled = true;
+                btnLoad.textContent = 'Loading...';
+                try {
+                    const result = await API.loadCheckpoint(path);
+                    this.showCheckpointStatus(result.message, result.success);
+                } catch (e) {
+                    this.showCheckpointStatus('Load failed: ' + e.message, false);
+                } finally {
+                    btnLoad.disabled = false;
+                    btnLoad.textContent = 'Load';
+                }
+            });
+        }
+
+        // Find latest
+        const btnFindLatest = document.getElementById('btn-find-latest');
+        if (btnFindLatest) {
+            btnFindLatest.addEventListener('click', async () => {
+                await this.loadLatestCheckpointPath();
+            });
+        }
+
+        // Refresh list
+        const btnRefresh = document.getElementById('btn-refresh-checkpoints');
+        if (btnRefresh) {
+            btnRefresh.addEventListener('click', async () => {
+                await this.refreshCheckpointList();
+            });
+        }
+    },
+
+    /**
+     * Load latest checkpoint path into input
+     */
+    async loadLatestCheckpointPath() {
+        try {
+            const result = await API.getLatestCheckpoint();
+            if (result.success && result.path) {
+                const input = document.getElementById('checkpoint-path');
+                if (input) {
+                    input.value = result.path;
+                }
+            }
+            await this.refreshCheckpointList();
+        } catch (e) {
+            console.error('Failed to load latest checkpoint:', e);
+        }
+    },
+
+    /**
+     * Refresh checkpoint list
+     */
+    async refreshCheckpointList() {
+        const listEl = document.getElementById('checkpoint-list');
+        if (!listEl) return;
+
+        try {
+            const result = await API.listCheckpoints();
+            listEl.innerHTML = '';
+
+            if (result.checkpoints.length === 0) {
+                listEl.innerHTML = '<div class="checkpoint-item">No checkpoints found</div>';
+                return;
+            }
+
+            result.checkpoints.slice(0, 10).forEach(cp => {
+                const item = document.createElement('div');
+                item.className = 'checkpoint-item';
+                item.innerHTML = `
+                    <span class="checkpoint-name">${cp.filename}</span>
+                    <span class="checkpoint-size">${(cp.size_bytes / 1024).toFixed(0)} KB</span>
+                `;
+                item.addEventListener('click', () => {
+                    document.getElementById('checkpoint-path').value = cp.path;
+                });
+                listEl.appendChild(item);
+            });
+        } catch (e) {
+            listEl.innerHTML = '<div class="checkpoint-item error">Failed to load list</div>';
+        }
+    },
+
+    /**
+     * Show checkpoint status message
+     */
+    showCheckpointStatus(message, success) {
+        const statusEl = document.getElementById('checkpoint-status');
+        if (statusEl) {
+            statusEl.textContent = message;
+            statusEl.className = 'checkpoint-status ' + (success ? 'success' : 'error');
+            setTimeout(() => {
+                statusEl.textContent = '';
+                statusEl.className = 'checkpoint-status';
+            }, 3000);
+        }
     },
 
     /**

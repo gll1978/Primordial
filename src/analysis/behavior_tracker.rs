@@ -3,14 +3,20 @@
 //! Tracks organism movement patterns and patch visits to measure
 //! spatial memory efficiency.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
+
+/// Maximum number of patch visits to track per organism (ring buffer)
+const MAX_PATCH_VISITS: usize = 500;
+
+/// Maximum number of positions to track per organism (ring buffer)
+const MAX_POSITIONS: usize = 64;
 
 /// Tracks behavior of a single organism
 #[derive(Debug, Clone)]
 pub struct BehaviorTracker {
     pub organism_id: u64,
-    pub positions: Vec<(u8, u8)>,
-    pub patch_visits: Vec<(u64, usize)>, // (time, patch_index)
+    pub positions: VecDeque<(u8, u8)>,
+    pub patch_visits: VecDeque<(u64, usize)>, // (time, patch_index) - ring buffer
     pub unique_cells_visited: u16,
     pub total_moves: u32,
     pub total_eats: u32,
@@ -21,8 +27,8 @@ impl BehaviorTracker {
     pub fn new(organism_id: u64) -> Self {
         Self {
             organism_id,
-            positions: Vec::with_capacity(64),
-            patch_visits: Vec::new(),
+            positions: VecDeque::with_capacity(MAX_POSITIONS),
+            patch_visits: VecDeque::with_capacity(MAX_PATCH_VISITS),
             unique_cells_visited: 0,
             total_moves: 0,
             total_eats: 0,
@@ -32,16 +38,20 @@ impl BehaviorTracker {
 
     pub fn track_movement(&mut self, x: u8, y: u8) {
         self.total_moves += 1;
-        // Only store last N positions to save memory
-        if self.positions.len() >= 64 {
-            self.positions.remove(0);
+        // Ring buffer: remove oldest if at capacity (O(1) with VecDeque)
+        if self.positions.len() >= MAX_POSITIONS {
+            self.positions.pop_front();
         }
-        self.positions.push((x, y));
+        self.positions.push_back((x, y));
     }
 
     pub fn track_patch_visit(&mut self, time: u64, patch_index: usize) {
         self.total_eats += 1;
-        self.patch_visits.push((time, patch_index));
+        // Ring buffer: remove oldest if at capacity (O(1) with VecDeque)
+        if self.patch_visits.len() >= MAX_PATCH_VISITS {
+            self.patch_visits.pop_front();
+        }
+        self.patch_visits.push_back((time, patch_index));
     }
 
     pub fn mark_dead(&mut self) {

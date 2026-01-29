@@ -36,8 +36,8 @@ fn main() {
                 &cognitive,
             );
             let outputs = org.brain.forward(&inputs);
-            let mut output_array = [0.0f32; 15];
-            for (i, &val) in outputs.iter().take(15).enumerate() {
+            let mut output_array = [0.0f32; 19];
+            for (i, &val) in outputs.iter().take(19).enumerate() {
                 output_array[i] = val;
             }
             let action = org.decide_action(&output_array);

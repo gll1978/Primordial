@@ -175,13 +175,13 @@ fn test_neural_network_consistency() {
             assert!(org.brain.is_valid(), "Brain should be valid");
             // 75 inputs: 24 base + 8 spatial + 3 temporal + 3 social + 10 sequential + 12 predator + 15 cooperation
             assert_eq!(org.brain.n_inputs, 75);
-            // 15 outputs: 4 move + eat + reproduce + attack + signal + wait + 2 social + 4 cooperation
-            assert_eq!(org.brain.n_outputs, 15);
+            // 19 outputs: 8 move (4 cardinal + 4 diagonal) + eat + reproduce + attack + signal + wait + 2 social + 3 cooperation + 1 large prey
+            assert_eq!(org.brain.n_outputs, 19);
 
             // Forward pass should work
             let inputs = [0.5f32; 75];
             let outputs = org.brain.forward(&inputs);
-            assert_eq!(outputs.len(), 15);
+            assert_eq!(outputs.len(), 19);
             assert!(outputs.iter().all(|&x| x >= -1.0 && x <= 1.0));
         }
     }

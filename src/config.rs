@@ -403,6 +403,18 @@ pub struct SafetyConfig {
     pub max_age: u32,
     /// Maximum neurons per brain
     pub max_neurons: usize,
+    /// Maximum simulation steps (0 = unlimited)
+    #[serde(default)]
+    pub max_steps: u64,
+    /// Maximum memory usage in MB (0 = unlimited)
+    #[serde(default)]
+    pub max_memory_mb: Option<u64>,
+    /// Memory warning threshold (percentage of system memory)
+    #[serde(default)]
+    pub memory_warning_percent: Option<f32>,
+    /// Memory critical threshold (percentage) - triggers auto-pause
+    #[serde(default)]
+    pub memory_critical_percent: Option<f32>,
 }
 
 /// Logging and checkpoint configuration
@@ -549,6 +561,10 @@ impl Default for SafetyConfig {
             max_energy: 500.0,
             max_age: 5000,
             max_neurons: 50,
+            max_steps: 0, // 0 = unlimited
+            max_memory_mb: None, // None = unlimited
+            memory_warning_percent: Some(70.0),
+            memory_critical_percent: Some(85.0),
         }
     }
 }

@@ -3,6 +3,9 @@
 use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
+/// Maximum number of long-term changes to keep per organism
+const MAX_LONG_TERM_CHANGES: usize = 1000;
+
 /// A single weight change record
 #[derive(Clone, Debug)]
 pub struct WeightChange {
@@ -79,6 +82,34 @@ impl MemoryConsolidator {
         }
 
         self.consolidations_performed += 1;
+
+        // Prune long-term changes if over limit (keep most important)
+        if self.long_term_changes.len() > MAX_LONG_TERM_CHANGES {
+            self.prune_long_term_changes();
+        }
+    }
+
+    /// Remove least important long-term changes to stay under limit
+    fn prune_long_term_changes(&mut self) {
+        if self.long_term_changes.len() <= MAX_LONG_TERM_CHANGES {
+            return;
+        }
+
+        // Collect entries with their importance scores
+        let mut entries: Vec<_> = self
+            .long_term_changes
+            .iter()
+            .map(|(k, v)| (*k, v.total_importance))
+            .collect();
+
+        // Sort by importance (ascending, so least important first)
+        entries.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        // Remove least important entries to get back under limit
+        let to_remove = self.long_term_changes.len() - MAX_LONG_TERM_CHANGES;
+        for (key, _) in entries.into_iter().take(to_remove) {
+            self.long_term_changes.remove(&key);
+        }
     }
 
     /// Get consolidated changes that exceed the threshold

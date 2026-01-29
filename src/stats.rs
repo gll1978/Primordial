@@ -2,7 +2,7 @@
 
 use crate::organism::Organism;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
 /// Statistics snapshot for a simulation step
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -148,27 +148,51 @@ impl Stats {
     }
 }
 
+/// Maximum number of stats snapshots to keep (ring buffer)
+const MAX_STATS_SNAPSHOTS: usize = 10_000;
+
 /// Historical statistics tracker
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct StatsHistory {
-    /// All recorded stats snapshots
-    pub snapshots: Vec<Stats>,
+    /// All recorded stats snapshots (ring buffer - VecDeque for O(1) pop_front)
+    pub snapshots: VecDeque<Stats>,
     /// Recording interval
     pub interval: u64,
+    /// Maximum snapshots to keep
+    #[serde(default = "default_max_snapshots")]
+    pub max_snapshots: usize,
+}
+
+fn default_max_snapshots() -> usize {
+    MAX_STATS_SNAPSHOTS
 }
 
 impl StatsHistory {
     /// Create new history with recording interval
     pub fn new(interval: u64) -> Self {
         Self {
-            snapshots: Vec::new(),
+            snapshots: VecDeque::with_capacity(MAX_STATS_SNAPSHOTS.min(1000)),
             interval,
+            max_snapshots: MAX_STATS_SNAPSHOTS,
         }
     }
 
-    /// Record a stats snapshot
+    /// Create new history with custom max snapshots
+    pub fn with_max(interval: u64, max_snapshots: usize) -> Self {
+        Self {
+            snapshots: VecDeque::with_capacity(max_snapshots.min(1000)),
+            interval,
+            max_snapshots,
+        }
+    }
+
+    /// Record a stats snapshot (ring buffer behavior - O(1))
     pub fn record(&mut self, stats: Stats) {
-        self.snapshots.push(stats);
+        // Remove oldest if at capacity (O(1) with VecDeque)
+        if self.snapshots.len() >= self.max_snapshots {
+            self.snapshots.pop_front();
+        }
+        self.snapshots.push_back(stats);
     }
 
     /// Get stats at a specific time (approximate)

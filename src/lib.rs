@@ -62,6 +62,7 @@ pub mod ecology;
 pub mod evolution;
 pub mod genetics;
 pub mod grid;
+pub mod memory_monitor;
 pub mod neural;
 pub mod organism;
 pub mod stats;

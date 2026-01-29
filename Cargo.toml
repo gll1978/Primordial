@@ -28,6 +28,9 @@ clap = { version = "4.4", features = ["derive"] }
 log = "0.4"
 env_logger = "0.10"
 
+# Directory utilities
+dirs = "5.0"
+
 # Optional visualization
 plotters = { version = "0.3", optional = true }
 

@@ -19,6 +19,12 @@ pub enum SimCommand {
     Reset,
     /// Reset simulation with new settings
     ResetWithSettings(SimSettings),
+    /// Save checkpoint manually
+    SaveCheckpoint,
+    /// Load checkpoint from file
+    LoadCheckpoint(String),
+    /// Set checkpoint directory
+    SetCheckpointDir(String),
     /// Shutdown the simulation thread
     Shutdown,
 }

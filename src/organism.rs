@@ -1450,6 +1450,10 @@ mod tests {
             | Action::MoveEast
             | Action::MoveSouth
             | Action::MoveWest
+            | Action::MoveNorthEast
+            | Action::MoveSouthEast
+            | Action::MoveSouthWest
+            | Action::MoveNorthWest
             | Action::Eat
             | Action::Reproduce
             | Action::Attack

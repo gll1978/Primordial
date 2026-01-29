@@ -2,7 +2,7 @@
 
 use crate::genetics::phylogeny::PhylogeneticTree;
 use crate::organism::Organism;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 /// Collection of diversity metrics for a population
 #[derive(Clone, Debug, Default)]
@@ -232,11 +232,15 @@ pub fn calculate_all_metrics(
     }
 }
 
+/// Maximum number of diversity records to keep (ring buffer)
+const MAX_DIVERSITY_RECORDS: usize = 5_000;
+
 /// Track diversity over time
 #[derive(Clone, Debug, Default)]
 pub struct DiversityHistory {
-    pub records: Vec<DiversityRecord>,
+    pub records: VecDeque<DiversityRecord>,
     pub record_interval: u64,
+    pub max_records: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -249,12 +253,22 @@ pub struct DiversityRecord {
 impl DiversityHistory {
     pub fn new(record_interval: u64) -> Self {
         Self {
-            records: Vec::new(),
+            records: VecDeque::with_capacity(MAX_DIVERSITY_RECORDS.min(1000)),
             record_interval,
+            max_records: MAX_DIVERSITY_RECORDS,
         }
     }
 
-    /// Record current diversity metrics
+    /// Create with custom max records
+    pub fn with_max(record_interval: u64, max_records: usize) -> Self {
+        Self {
+            records: VecDeque::with_capacity(max_records.min(1000)),
+            record_interval,
+            max_records,
+        }
+    }
+
+    /// Record current diversity metrics (ring buffer behavior - O(1))
     pub fn record(
         &mut self,
         time: u64,
@@ -264,7 +278,12 @@ impl DiversityHistory {
         let population = organisms.iter().filter(|o| o.is_alive()).count();
         let metrics = calculate_all_metrics(organisms, phylogeny);
 
-        self.records.push(DiversityRecord {
+        // Remove oldest if at capacity (O(1) with VecDeque)
+        if self.records.len() >= self.max_records {
+            self.records.pop_front();
+        }
+
+        self.records.push_back(DiversityRecord {
             time,
             population,
             metrics,
@@ -273,7 +292,7 @@ impl DiversityHistory {
 
     /// Get latest record
     pub fn latest(&self) -> Option<&DiversityRecord> {
-        self.records.last()
+        self.records.back()
     }
 
     /// Get diversity trend (positive = increasing, negative = decreasing)

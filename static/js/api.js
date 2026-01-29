@@ -99,6 +99,30 @@ const API = {
         const { state } = await this.get('/api/state');
         AppState.setSimState(state);
         return state;
+    },
+
+    // --- Checkpoint ---
+
+    async saveCheckpoint() {
+        const result = await this.post('/api/checkpoint/save');
+        return result.json();
+    },
+
+    async loadCheckpoint(path) {
+        const result = await this.post('/api/checkpoint/load', { path });
+        const data = await result.json();
+        if (data.success) {
+            AppState.setSimState('Paused');
+        }
+        return data;
+    },
+
+    async getLatestCheckpoint() {
+        return await this.get('/api/checkpoint/latest');
+    },
+
+    async listCheckpoints() {
+        return await this.get('/api/checkpoint/list');
     }
 };
 

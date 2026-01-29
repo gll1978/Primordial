@@ -54,6 +54,10 @@ safety:
   max_energy: 500.0
   max_age: 5000
   max_neurons: 30
+  max_steps: 0  # 0 = unlimited, set to stop simulation after N steps
+  max_memory_mb: 0  # 0 = unlimited, set to limit memory usage
+  memory_warning_percent: 70.0  # Warning threshold (% of system RAM)
+  memory_critical_percent: 85.0  # Critical threshold - auto-pause + checkpoint
 
 logging:
   checkpoint_interval: 500

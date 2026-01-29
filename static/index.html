@@ -120,6 +120,32 @@
                     </div>
                 </section>
 
+                <!-- Checkpoint Panel -->
+                <section class="panel collapsible" id="checkpoint-panel">
+                    <h3 class="panel-header" data-toggle="checkpoint-content">
+                        <span class="toggle-icon">&#9660;</span> Checkpoints
+                    </h3>
+                    <div class="panel-content" id="checkpoint-content">
+                        <div class="checkpoint-controls">
+                            <button id="btn-save-checkpoint" class="btn-primary">Save</button>
+                            <button id="btn-load-checkpoint" class="btn-secondary">Load</button>
+                            <button id="btn-find-latest" class="btn-small" title="Find latest checkpoint">Latest</button>
+                        </div>
+                        <div class="form-group">
+                            <label>Checkpoint Path:</label>
+                            <input type="text" id="checkpoint-path" placeholder="Path to checkpoint file">
+                        </div>
+                        <div id="checkpoint-status" class="checkpoint-status"></div>
+                        <div class="checkpoint-list-header">
+                            <span>Recent Checkpoints:</span>
+                            <button id="btn-refresh-checkpoints" class="btn-small" title="Refresh list">&#8635;</button>
+                        </div>
+                        <div id="checkpoint-list" class="checkpoint-list">
+                            <!-- Filled by JS -->
+                        </div>
+                    </div>
+                </section>
+
                 <!-- Population Chart -->
                 <section class="panel collapsible" id="chart-panel">
                     <h3 class="panel-header" data-toggle="chart-content">
