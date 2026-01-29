@@ -221,9 +221,10 @@ const UI = {
                 max_population: parseInt(document.getElementById('max-pop').value),
                 mutation_rate: parseFloat(document.getElementById('mutation-rate').value),
                 food_regen_rate: parseFloat(document.getElementById('food-regen').value),
-                predation_enabled: document.getElementById('predation-enabled').checked,
-                seasons_enabled: document.getElementById('seasons-enabled').checked,
-                terrain_enabled: document.getElementById('terrain-enabled').checked,
+                // Predation, seasons and terrain are always enabled
+                predation_enabled: true,
+                seasons_enabled: true,
+                terrain_enabled: true,
             };
 
             await API.updateSettings(settings);
@@ -405,9 +406,6 @@ const UI = {
         document.getElementById('max-pop').value = settings.max_population;
         document.getElementById('mutation-rate').value = settings.mutation_rate;
         document.getElementById('food-regen').value = settings.food_regen_rate;
-        document.getElementById('predation-enabled').checked = settings.predation_enabled;
-        document.getElementById('seasons-enabled').checked = settings.seasons_enabled;
-        document.getElementById('terrain-enabled').checked = settings.terrain_enabled;
     }
 };
 
