@@ -8,6 +8,8 @@ const WorldCanvas = {
     zoom: 1.0,
     showFood: true,
     showGrid: false,
+    tooltip: null,
+    hoveredOrganism: null,
 
     // Terrain colors (matching Rust)
     terrainColors: {
@@ -24,6 +26,7 @@ const WorldCanvas = {
     init() {
         this.canvas = document.getElementById('world-canvas');
         this.ctx = this.canvas.getContext('2d');
+        this.tooltip = document.getElementById('organism-tooltip');
 
         // Handle resize
         this.resize();
@@ -31,6 +34,12 @@ const WorldCanvas = {
 
         // Handle clicks
         this.canvas.addEventListener('click', (e) => this.handleClick(e));
+
+        // Handle mouse move for tooltip
+        this.canvas.addEventListener('mousemove', (e) => this.handleMouseMove(e));
+
+        // Handle mouse leave to hide tooltip
+        this.canvas.addEventListener('mouseleave', () => this.hideTooltip());
 
         // Handle keyboard
         document.addEventListener('keydown', (e) => {
@@ -264,6 +273,116 @@ const WorldCanvas = {
         if (AppState.snapshot) {
             this.render(AppState.snapshot);
         }
+    },
+
+    /**
+     * Handle mouse move for tooltip
+     */
+    handleMouseMove(event) {
+        const snapshot = AppState.snapshot;
+        if (!snapshot) {
+            this.hideTooltip();
+            return;
+        }
+
+        const rect = this.canvas.getBoundingClientRect();
+        const mouseX = event.clientX - rect.left;
+        const mouseY = event.clientY - rect.top;
+
+        const { cellSize, offsetX, offsetY } = this.calculateLayout(snapshot);
+
+        // Find organism under cursor (check by pixel distance, not just cell)
+        let foundOrganism = null;
+        let minDist = Infinity;
+
+        for (const org of snapshot.organisms) {
+            const centerX = offsetX + (org.x + 0.5) * cellSize;
+            const centerY = offsetY + (org.y + 0.5) * cellSize;
+            const radius = Math.max(cellSize * 0.4 * Math.sqrt(org.size), 2);
+
+            const dist = Math.sqrt((mouseX - centerX) ** 2 + (mouseY - centerY) ** 2);
+
+            if (dist <= radius + 3 && dist < minDist) {
+                minDist = dist;
+                foundOrganism = org;
+            }
+        }
+
+        if (foundOrganism) {
+            this.showTooltip(foundOrganism, event.clientX, event.clientY);
+        } else {
+            this.hideTooltip();
+        }
+    },
+
+    /**
+     * Show tooltip for an organism
+     */
+    showTooltip(org, clientX, clientY) {
+        if (!this.tooltip) return;
+
+        this.hoveredOrganism = org;
+        this.tooltip.innerHTML = this.formatTooltipContent(org);
+        this.tooltip.classList.remove('hidden');
+
+        // Position tooltip near cursor but avoid going off screen
+        const tooltipRect = this.tooltip.getBoundingClientRect();
+        const padding = 15;
+        let left = clientX + padding;
+        let top = clientY + padding;
+
+        // Adjust if tooltip would go off right edge
+        if (left + tooltipRect.width > window.innerWidth) {
+            left = clientX - tooltipRect.width - padding;
+        }
+
+        // Adjust if tooltip would go off bottom edge
+        if (top + tooltipRect.height > window.innerHeight) {
+            top = clientY - tooltipRect.height - padding;
+        }
+
+        this.tooltip.style.left = `${left}px`;
+        this.tooltip.style.top = `${top}px`;
+    },
+
+    /**
+     * Hide the tooltip
+     */
+    hideTooltip() {
+        if (this.tooltip) {
+            this.tooltip.classList.add('hidden');
+            this.hoveredOrganism = null;
+        }
+    },
+
+    /**
+     * Format tooltip content for an organism
+     */
+    formatTooltipContent(org) {
+        // Determine type
+        let typeClass = 'normal';
+        let typeName = 'Herbivore';
+        if (org.is_predator) {
+            typeClass = 'predator';
+            typeName = 'Predator';
+        } else if (org.is_aquatic) {
+            typeClass = 'aquatic';
+            typeName = 'Aquatic';
+        }
+
+        return `
+            <div class="tooltip-header ${typeClass}">${typeName} #${org.id}</div>
+            <div class="tooltip-row"><span>Position:</span><span>(${org.x}, ${org.y})</span></div>
+            <div class="tooltip-row"><span>Energy:</span><span>${org.energy.toFixed(1)}</span></div>
+            <div class="tooltip-row"><span>Health:</span><span>${org.health.toFixed(1)}</span></div>
+            <div class="tooltip-row"><span>Age:</span><span>${org.age}</span></div>
+            <div class="tooltip-row"><span>Generation:</span><span>${org.generation}</span></div>
+            <div class="tooltip-row"><span>Size:</span><span>${org.size.toFixed(2)}</span></div>
+            <div class="tooltip-row"><span>Brain Layers:</span><span>${org.brain_layers.length}</span></div>
+            <div class="tooltip-row"><span>Offspring:</span><span>${org.offspring_count}</span></div>
+            <div class="tooltip-row"><span>Food Eaten:</span><span>${org.food_eaten}</span></div>
+            <div class="tooltip-row"><span>Kills:</span><span>${org.kills}</span></div>
+        `;
     }
 };
 
