@@ -7,6 +7,9 @@ use std::time::{Duration, Instant};
 use crate::config::Config;
 use crate::World;
 
+#[cfg(feature = "database")]
+use crate::database::Database;
+
 use super::commands::{SimCommand, SimState};
 use super::snapshot::WorldSnapshot;
 
@@ -46,6 +49,7 @@ impl SimulationHandle {
             SimCommand::Pause => self.state = SimState::Paused,
             SimCommand::Resume => self.state = SimState::Running,
             SimCommand::Shutdown => self.state = SimState::Stopped,
+            SimCommand::Reset | SimCommand::ResetWithSettings(_) => self.state = SimState::Paused,
             _ => {}
         }
         let _ = self.command_tx.send(command);
@@ -94,6 +98,27 @@ fn run_simulation(config: Config, command_rx: Receiver<SimCommand>, snapshot_tx:
     let mut selected_id: Option<u64> = None;
     let mut max_steps: u64 = 0; // 0 = unlimited
 
+    // Initialize database if enabled in config
+    // The database is kept alive in this variable for the duration of the simulation
+    #[cfg(feature = "database")]
+    #[allow(unused_assignments)]
+    let mut _db: Option<Database> = if current_config.database.enabled {
+        let config_json = serde_json::to_string(&current_config).unwrap_or_default();
+        match Database::new(&current_config.database.url, &config_json, None) {
+            Ok(database) => {
+                log::info!("Database connected: run_id = {}", database.run_id);
+                world.set_db_sender(database.sender_clone());
+                Some(database)
+            }
+            Err(e) => {
+                log::error!("Database connection failed: {}", e);
+                None
+            }
+        }
+    } else {
+        None
+    };
+
     // Timing control
     let base_step_duration = Duration::from_micros(1000); // Base: 1000 steps/s max
     let mut last_step = Instant::now();
@@ -119,17 +144,47 @@ fn run_simulation(config: Config, command_rx: Receiver<SimCommand>, snapshot_tx:
                     let _ = snapshot_tx.send(WorldSnapshot::from_world(&world, selected_id));
                 }
                 SimCommand::Reset => {
+                    log::info!("Reset: using current_config with grid_size={}", current_config.world.grid_size);
                     world = World::new(current_config.clone());
+                    log::info!("World reset: population={}", world.organisms.len());
+                    // Reconnect database for new run
+                    #[cfg(feature = "database")]
+                    if current_config.database.enabled {
+                        let config_json = serde_json::to_string(&current_config).unwrap_or_default();
+                        if let Ok(new_db) = Database::new(&current_config.database.url, &config_json, None) {
+                            log::info!("Database reconnected: run_id = {}", new_db.run_id);
+                            world.set_db_sender(new_db.sender_clone());
+                            _db = Some(new_db);
+                        }
+                    }
                     selected_id = None;
                     let _ = snapshot_tx.send(WorldSnapshot::from_world(&world, selected_id));
                 }
                 SimCommand::ResetWithSettings(settings) => {
+                    log::info!("ResetWithSettings: grid_size={}, population={}",
+                        settings.grid_size, settings.initial_population);
                     max_steps = settings.max_steps;
                     settings.apply_to_config(&mut current_config);
+                    log::info!("Config applied: grid_size={}", current_config.world.grid_size);
                     world = World::new(current_config.clone());
+                    log::info!("World created: population={}", world.organisms.len());
+                    // Reconnect database for new run
+                    #[cfg(feature = "database")]
+                    if current_config.database.enabled {
+                        let config_json = serde_json::to_string(&current_config).unwrap_or_default();
+                        if let Ok(new_db) = Database::new(&current_config.database.url, &config_json, None) {
+                            log::info!("Database reconnected: run_id = {}", new_db.run_id);
+                            world.set_db_sender(new_db.sender_clone());
+                            _db = Some(new_db);
+                        }
+                    }
                     selected_id = None;
                     state = SimState::Paused;
-                    let _ = snapshot_tx.send(WorldSnapshot::from_world(&world, selected_id));
+                    eprintln!("[SIM] Creating snapshot for grid_size={}...", current_config.world.grid_size);
+                    let snapshot = WorldSnapshot::from_world(&world, selected_id);
+                    eprintln!("[SIM] Snapshot created: grid_size={}, organisms={}", snapshot.grid_size, snapshot.organisms.len());
+                    let send_result = snapshot_tx.send(snapshot);
+                    eprintln!("[SIM] Snapshot sent: {:?}", send_result.is_ok());
                 }
                 SimCommand::Shutdown => {
                     return;

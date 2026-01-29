@@ -64,16 +64,19 @@ impl PrimordialApp {
 impl eframe::App for PrimordialApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Poll for new snapshot
-        if let Some(new_snapshot) = self.sim_handle.try_recv_snapshot() {
+        let got_new_snapshot = if let Some(new_snapshot) = self.sim_handle.try_recv_snapshot() {
+            log::debug!("GUI received snapshot: time={}, grid_size={}, pop={}",
+                new_snapshot.time, new_snapshot.grid_size, new_snapshot.stats.population);
             self.stats_panel.update(&new_snapshot);
             self.log_panel.record(&new_snapshot);
             self.snapshot = Some(new_snapshot);
-        }
+            true
+        } else {
+            false
+        };
 
-        // Request repaint when simulation is running
-        if self.sim_handle.is_running() {
-            ctx.request_repaint();
-        }
+        // Always request repaint to ensure responsive UI
+        ctx.request_repaint_after(std::time::Duration::from_millis(16));
 
         // Top panel with controls
         egui::TopBottomPanel::top("control_panel").show(ctx, |ui| {
@@ -98,9 +101,12 @@ impl eframe::App for PrimordialApp {
                     if self.settings_panel.show(ui) {
                         // Apply & Reset was clicked
                         let settings = self.settings_panel.settings().clone();
+                        log::info!("GUI: Apply & Reset clicked, grid_size={}, enhanced_senses={}, n_inputs={}",
+                            settings.grid_size, settings.enhanced_senses, settings.n_inputs);
                         self.stats_panel.clear();
                         self.log_panel.reset(settings.clone());
                         self.selected_id = None;
+                        self.snapshot = None; // Clear old snapshot to force refresh
                         self.sim_handle.send(SimCommand::ResetWithSettings(settings));
                     }
 

@@ -81,6 +81,10 @@ impl StatsPanel {
                         ui.label(format!("{}", snapshot.time));
                         ui.end_row();
 
+                        ui.label("Grid Size:");
+                        ui.label(format!("{}x{}", snapshot.grid_size, snapshot.grid_size));
+                        ui.end_row();
+
                         ui.label("Population:");
                         ui.label(format!("{}", snapshot.stats.population));
                         ui.end_row();

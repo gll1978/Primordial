@@ -10,13 +10,13 @@ use crate::ecology::food_patches::{PatchConfig, PatchWorld};
 use crate::ecology::large_prey::{CooperationManager, LargePrey};
 use crate::ecology::predation;
 use crate::ecology::seasons::SeasonalSystem;
-use crate::ecology::terrain::TerrainGrid;
+use crate::ecology::terrain::{Terrain, TerrainGrid};
 use crate::ecology::dynamic_obstacles::DynamicObstacleSystem;
 use crate::evolution::EvolutionEngine;
 use crate::genetics::crossover::CrossoverSystem;
 use crate::genetics::diversity::DiversityHistory;
 use crate::genetics::phylogeny::PhylogeneticTree;
-use crate::genetics::sex::{Sex, SexualReproductionSystem};
+use crate::genetics::sex::{check_speciation_compatibility, Sex, SexualReproductionSystem};
 use crate::grid::{FoodGrid, SpatialIndex};
 use crate::organism::{Action, DeathCause, MemoryFrame, Organism, ShortTermMemory};
 use crate::stats::{LineageTracker, Stats, StatsHistory};
@@ -130,6 +130,14 @@ pub struct World {
 
     // Phase 2 Feature 4: Dynamic Obstacles
     pub dynamic_obstacle_system: Option<DynamicObstacleSystem>,
+
+    // Anti-bottleneck diversity mechanisms
+    /// Tracks terrain adaptation: organism_id -> (terrain, steps_in_terrain)
+    pub terrain_adaptation: HashMap<u64, (crate::ecology::terrain::Terrain, u64)>,
+    /// Tracks strategy frequencies for frequency-dependent selection
+    strategy_frequencies: HashMap<String, usize>,
+    /// Last step when frequencies were updated
+    last_frequency_update: u64,
 }
 
 impl World {
@@ -296,6 +304,9 @@ impl World {
             db_sender: None,
             complexity_grid,
             dynamic_obstacle_system,
+            terrain_adaptation: HashMap::new(),
+            strategy_frequencies: HashMap::new(),
+            last_frequency_update: 0,
         };
 
         // Initial spatial index update
@@ -438,6 +449,9 @@ impl World {
             db_sender: None,
             complexity_grid,
             dynamic_obstacle_system,
+            terrain_adaptation: HashMap::new(),
+            strategy_frequencies: HashMap::new(),
+            last_frequency_update: 0,
         };
 
         world.update_spatial_index();
@@ -1776,8 +1790,178 @@ impl World {
         }
     }
 
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // ANTI-BOTTLENECK DIVERSITY MECHANISMS
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    /// Update terrain adaptation tracking for an organism
+    fn update_terrain_adaptation(&mut self, org_id: u64, x: u8, y: u8) {
+        if !self.config.diversity.enabled || !self.config.diversity.niche_enabled {
+            return;
+        }
+
+        let current_terrain = self.terrain_grid.get(x, y);
+
+        let entry = self.terrain_adaptation.entry(org_id).or_insert((current_terrain, 0));
+
+        if entry.0 == current_terrain {
+            // Same terrain, increment time
+            entry.1 += 1;
+        } else {
+            // Changed terrain, reset adaptation
+            *entry = (current_terrain, 1);
+        }
+    }
+
+    /// Calculate niche bonus for an organism based on terrain specialization
+    fn calculate_niche_bonus(&self, org: &Organism) -> f32 {
+        if !self.config.diversity.enabled || !self.config.diversity.niche_enabled {
+            return 1.0;
+        }
+
+        let mut bonus = 1.0f32;
+
+        // Check terrain adaptation
+        if let Some(&(terrain, time_in_terrain)) = self.terrain_adaptation.get(&org.id) {
+            if time_in_terrain >= self.config.diversity.niche_adaptation_time {
+                // Specialist bonus
+                bonus *= self.config.diversity.niche_specialist_bonus;
+
+                // Check diet-terrain synergy
+                let synergy = match terrain {
+                    Terrain::Forest => org.diet.plant_efficiency > 0.6 || org.diet.fruit_efficiency > 0.6,
+                    Terrain::Mountain => org.is_predator || org.diet.meat_efficiency > 0.6,
+                    Terrain::Desert => org.diet.insect_efficiency > 0.6,
+                    Terrain::Water => org.diet.plant_efficiency > 0.5 && org.diet.insect_efficiency > 0.5,
+                    Terrain::Plain => true, // Generalist terrain
+                };
+
+                if synergy {
+                    bonus *= self.config.diversity.terrain_diet_synergy_bonus;
+                }
+            } else if time_in_terrain < self.config.diversity.niche_adaptation_time / 3 {
+                // Generalist penalty (moves around too much)
+                bonus *= self.config.diversity.niche_generalist_penalty;
+            }
+        }
+
+        bonus
+    }
+
+    /// Classify an organism's strategy for frequency-dependent selection
+    fn classify_strategy(&self, org: &Organism) -> String {
+        let method = &self.config.diversity.strategy_classification;
+
+        // Diet classification
+        let diet_type = if org.is_predator || org.diet.meat_efficiency > 0.6 {
+            "C" // Carnivore
+        } else if org.diet.plant_efficiency > 0.6 {
+            "H" // Herbivore
+        } else {
+            "O" // Omnivore
+        };
+
+        // Terrain classification
+        let terrain_type = if let Some(&(terrain, _)) = self.terrain_adaptation.get(&org.id) {
+            match terrain {
+                Terrain::Forest => "F",
+                Terrain::Mountain => "M",
+                Terrain::Desert => "D",
+                Terrain::Water => "W",
+                Terrain::Plain => "P",
+            }
+        } else {
+            "P" // Default to plains
+        };
+
+        // Brain classification
+        let brain_type = if org.brain.complexity() >= 3 {
+            "B3" // Complex brain
+        } else if org.brain.complexity() >= 2 {
+            "B2" // Medium brain
+        } else {
+            "B1" // Simple brain
+        };
+
+        match method.as_str() {
+            "diet" => diet_type.to_string(),
+            "terrain" => terrain_type.to_string(),
+            "brain" => brain_type.to_string(),
+            _ => format!("{}-{}-{}", diet_type, terrain_type, brain_type), // combined
+        }
+    }
+
+    /// Update strategy frequency counts
+    fn update_strategy_frequencies(&mut self) {
+        if !self.config.diversity.enabled || !self.config.diversity.frequency_dependent_enabled {
+            return;
+        }
+
+        // Only update every 10 steps to reduce overhead
+        if self.time - self.last_frequency_update < 10 {
+            return;
+        }
+        self.last_frequency_update = self.time;
+
+        self.strategy_frequencies.clear();
+
+        for org in &self.organisms {
+            if org.is_alive() {
+                let strategy = self.classify_strategy(org);
+                *self.strategy_frequencies.entry(strategy).or_insert(0) += 1;
+            }
+        }
+    }
+
+    /// Calculate frequency-dependent bonus for an organism
+    fn calculate_frequency_bonus(&self, org: &Organism) -> f32 {
+        if !self.config.diversity.enabled || !self.config.diversity.frequency_dependent_enabled {
+            return 1.0;
+        }
+
+        let strategy = self.classify_strategy(org);
+        let count = *self.strategy_frequencies.get(&strategy).unwrap_or(&0);
+        let total = self.organisms.iter().filter(|o| o.is_alive()).count();
+
+        if total == 0 {
+            return 1.0;
+        }
+
+        let frequency = count as f32 / total as f32;
+
+        if frequency < self.config.diversity.rare_strategy_threshold {
+            // Rare strategy bonus: interpolate from 1.0 to max_bonus
+            let rarity = 1.0 - (frequency / self.config.diversity.rare_strategy_threshold);
+            1.0 + rarity * (self.config.diversity.rare_strategy_max_bonus - 1.0)
+        } else if frequency > self.config.diversity.common_strategy_threshold {
+            // Common strategy penalty
+            self.config.diversity.common_strategy_penalty
+        } else {
+            // Normal range
+            1.0
+        }
+    }
+
     /// Handle reproduction (supports both sexual and asexual)
     fn handle_reproduction(&mut self) {
+        // Update strategy frequencies before reproduction
+        self.update_strategy_frequencies();
+
+        // Update terrain adaptation for all organisms
+        for org in &self.organisms {
+            if org.is_alive() {
+                let (id, x, y) = (org.id, org.x, org.y);
+                // We need to update after the loop due to borrow checker
+                let terrain = self.terrain_grid.get(x, y);
+                let entry = self.terrain_adaptation.entry(id).or_insert((terrain, 0));
+                if entry.0 == terrain {
+                    entry.1 += 1;
+                } else {
+                    *entry = (terrain, 1);
+                }
+            }
+        }
+
         if self.config.reproduction.enabled {
             self.handle_sexual_reproduction();
         } else {
@@ -1824,7 +2008,14 @@ impl World {
             // Base 30% + up to 50% based on relative fitness
             let fitness = self.organisms[idx].fitness();
             let relative_fitness = fitness / max_fitness;
-            let reproduction_probability = 0.3 + 0.5 * relative_fitness;
+            let mut reproduction_probability = 0.3 + 0.5 * relative_fitness;
+
+            // Apply diversity bonuses
+            let org = &self.organisms[idx];
+            let niche_bonus = self.calculate_niche_bonus(org);
+            let frequency_bonus = self.calculate_frequency_bonus(org);
+            reproduction_probability *= niche_bonus * frequency_bonus;
+            reproduction_probability = reproduction_probability.min(0.95); // Cap at 95%
 
             // Random chance based on fitness (replaces fixed 60% threshold)
             if self.rng.gen::<f32>() > reproduction_probability {
@@ -1922,6 +2113,8 @@ impl World {
         // Find valid pairs first (without borrowing mutably)
         let mut pairs: Vec<(usize, usize)> = Vec::new();
         let mut used: std::collections::HashSet<usize> = std::collections::HashSet::new();
+        let mut speciation_blocks = 0u64;
+        let mut boundary_zone_attempts = 0u64;
 
         for &idx1 in &candidates {
             if pairs.len() >= space_available {
@@ -1960,8 +2153,30 @@ impl World {
                     continue;
                 }
 
-                // Random chance to mate
-                if self.rng.gen::<f32>() > 0.5 {
+                // Check speciation compatibility
+                let org1_id = self.organisms[idx1].id;
+                let org2_id = org2.id;
+                let (can_mate, speciation_prob) = check_speciation_compatibility(
+                    org1_id,
+                    org2_id,
+                    &self.phylogeny,
+                    &self.config.diversity,
+                );
+
+                if !can_mate {
+                    // Different species - cannot mate
+                    speciation_blocks += 1;
+                    continue;
+                }
+
+                // Track boundary zone attempts
+                if speciation_prob < 1.0 {
+                    boundary_zone_attempts += 1;
+                }
+
+                // Random chance to mate, modified by speciation probability
+                let base_prob = 0.5 * speciation_prob;
+                if self.rng.gen::<f32>() > base_prob {
                     continue;
                 }
 
@@ -1972,6 +2187,10 @@ impl World {
                 break;
             }
         }
+
+        // Record speciation statistics
+        self.sexual_reproduction.speciation_blocks += speciation_blocks;
+        self.sexual_reproduction.boundary_zone_attempts += boundary_zone_attempts;
 
         // Now create offspring from pairs
         let mut offspring = Vec::new();

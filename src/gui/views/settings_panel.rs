@@ -87,9 +87,9 @@ impl SettingsPanel {
                         ui.end_row();
 
                         // World settings
-                        ui.label("Grid Size:");
+                        ui.label("Grid Size (max 255):");
                         if ui.add(egui::DragValue::new(&mut self.settings.grid_size)
-                            .clamp_range(20..=200)
+                            .clamp_range(20..=255)
                             .speed(5))
                             .changed()
                         {
@@ -188,6 +188,43 @@ impl SettingsPanel {
                             .changed()
                         {
                             self.modified = true;
+                        }
+                        ui.end_row();
+
+                        ui.separator();
+                        ui.separator();
+                        ui.end_row();
+
+                        // Advanced features
+                        ui.label("Diversity:");
+                        if ui.checkbox(&mut self.settings.diversity_enabled, "").changed() {
+                            self.modified = true;
+                        }
+                        ui.end_row();
+
+                        ui.label("Database:");
+                        if ui.checkbox(&mut self.settings.database_enabled, "").changed() {
+                            self.modified = true;
+                        }
+                        ui.end_row();
+
+                        ui.label("Cognitive Gate:");
+                        if ui.checkbox(&mut self.settings.cognitive_gate_enabled, "").changed() {
+                            self.modified = true;
+                        }
+                        ui.end_row();
+
+                        ui.label("Food Patches:");
+                        if ui.checkbox(&mut self.settings.food_patches_enabled, "").changed() {
+                            self.modified = true;
+                        }
+                        ui.end_row();
+
+                        ui.label("Enhanced Senses:");
+                        if ui.checkbox(&mut self.settings.enhanced_senses, "").changed() {
+                            self.modified = true;
+                            // Sync n_inputs with enhanced_senses
+                            self.settings.n_inputs = if self.settings.enhanced_senses { 95 } else { 75 };
                         }
                         ui.end_row();
                     });

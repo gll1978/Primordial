@@ -61,8 +61,8 @@ impl ControlPanel {
 
             ui.separator();
 
-            // Reset button
-            if ui.button("🔄 Reset").clicked() {
+            // Reset button - resets with current config (no GUI changes applied)
+            if ui.button("🔄 Restart").clicked() {
                 commands.push(SimCommand::Reset);
             }
         });

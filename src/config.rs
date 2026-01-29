@@ -65,6 +65,9 @@ pub struct Config {
     // Phase 2 Feature 4: Dynamic Obstacles
     #[serde(default)]
     pub dynamic_obstacles: DynamicObstacleConfig,
+    // Anti-bottleneck diversity mechanisms
+    #[serde(default)]
+    pub diversity: DiversityConfig,
 }
 
 /// Database configuration for individual organism tracking
@@ -230,6 +233,72 @@ impl Default for DayNightConfig {
             cycle_length: 2000,
             night_vision_penalty: 0.3,
             night_olfaction_bonus: 1.5,
+        }
+    }
+}
+
+/// Diversity configuration for anti-bottleneck mechanisms
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiversityConfig {
+    /// Enable diversity mechanisms
+    pub enabled: bool,
+
+    // Speciation
+    /// Enable speciation based on genetic distance
+    pub speciation_enabled: bool,
+    /// Minimum genetic distance for same species (always compatible)
+    pub min_genetic_distance: usize,
+    /// Maximum genetic distance for different species (never compatible)
+    pub max_genetic_distance: usize,
+    /// Mating probability in boundary zone
+    pub boundary_mating_probability: f32,
+
+    // Niches
+    /// Enable niche specialization
+    pub niche_enabled: bool,
+    /// Bonus for organisms specialized in a terrain
+    pub niche_specialist_bonus: f32,
+    /// Penalty for generalists
+    pub niche_generalist_penalty: f32,
+    /// Steps required to become adapted to a terrain
+    pub niche_adaptation_time: u64,
+    /// Bonus for matching diet and terrain
+    pub terrain_diet_synergy_bonus: f32,
+
+    // Frequency-dependent selection
+    /// Enable frequency-dependent selection
+    pub frequency_dependent_enabled: bool,
+    /// Maximum bonus for rare strategies
+    pub rare_strategy_max_bonus: f32,
+    /// Threshold below which strategy is considered rare
+    pub rare_strategy_threshold: f32,
+    /// Penalty for common strategies
+    pub common_strategy_penalty: f32,
+    /// Threshold above which strategy is considered common
+    pub common_strategy_threshold: f32,
+    /// Strategy classification method: "diet", "terrain", "brain", or "combined"
+    pub strategy_classification: String,
+}
+
+impl Default for DiversityConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            speciation_enabled: true,
+            min_genetic_distance: 5,
+            max_genetic_distance: 20,
+            boundary_mating_probability: 0.3,
+            niche_enabled: true,
+            niche_specialist_bonus: 1.4,
+            niche_generalist_penalty: 0.85,
+            niche_adaptation_time: 150,
+            terrain_diet_synergy_bonus: 1.25,
+            frequency_dependent_enabled: true,
+            rare_strategy_max_bonus: 1.6,
+            rare_strategy_threshold: 0.08,
+            common_strategy_penalty: 0.7,
+            common_strategy_threshold: 0.25,
+            strategy_classification: "combined".to_string(),
         }
     }
 }
@@ -418,6 +487,7 @@ impl Default for Config {
             day_night: DayNightConfig::default(),
             memory: MemoryConfig::default(),
             dynamic_obstacles: DynamicObstacleConfig::default(),
+            diversity: DiversityConfig::default(),
         }
     }
 }

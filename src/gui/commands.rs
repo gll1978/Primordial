@@ -50,6 +50,18 @@ pub struct SimSettings {
     pub learning_enabled: bool,
     /// Learning rate for Hebbian updates
     pub learning_rate: f32,
+    /// Enable diversity mechanisms (anti-bottleneck)
+    pub diversity_enabled: bool,
+    /// Enable database logging
+    pub database_enabled: bool,
+    /// Enable cognitive gate
+    pub cognitive_gate_enabled: bool,
+    /// Enable food patches
+    pub food_patches_enabled: bool,
+    /// Enable enhanced senses (requires n_inputs=95)
+    pub enhanced_senses: bool,
+    /// Number of neural inputs
+    pub n_inputs: usize,
 }
 
 impl Default for SimSettings {
@@ -68,6 +80,12 @@ impl Default for SimSettings {
             terrain_enabled: true,
             learning_enabled: false,
             learning_rate: 0.001,
+            diversity_enabled: false,
+            database_enabled: false,
+            cognitive_gate_enabled: false,
+            food_patches_enabled: false,
+            enhanced_senses: false,
+            n_inputs: 75,
         }
     }
 }
@@ -89,6 +107,12 @@ impl SimSettings {
             terrain_enabled: config.terrain.enabled,
             learning_enabled: config.learning.enabled,
             learning_rate: config.learning.learning_rate,
+            diversity_enabled: config.diversity.enabled,
+            database_enabled: config.database.enabled,
+            cognitive_gate_enabled: config.cognitive_gate.enabled,
+            food_patches_enabled: config.food_patches.enabled,
+            enhanced_senses: config.sensory.enhanced_senses,
+            n_inputs: config.neural.n_inputs,
         }
     }
 
@@ -106,6 +130,12 @@ impl SimSettings {
         config.terrain.enabled = self.terrain_enabled;
         config.learning.enabled = self.learning_enabled;
         config.learning.learning_rate = self.learning_rate;
+        config.diversity.enabled = self.diversity_enabled;
+        config.database.enabled = self.database_enabled;
+        config.cognitive_gate.enabled = self.cognitive_gate_enabled;
+        config.food_patches.enabled = self.food_patches_enabled;
+        config.sensory.enhanced_senses = self.enhanced_senses;
+        config.neural.n_inputs = self.n_inputs;
     }
 }
 

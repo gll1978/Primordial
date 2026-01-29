@@ -148,7 +148,7 @@ database:
   enabled: true
   url: "postgresql://primordial:primordial@localhost/primordial_v2"
   snapshot_interval: 100
-  log_learning_events: false
+  log_learning_events: true
 
 # Phase 3: Lifetime Learning (Hebbian) + Phase 2 Feature 3 Enhancements
 learning:
@@ -231,3 +231,29 @@ dynamic_obstacles:
   spawn_rate: 0.001          # New obstacles appear rate
   despawn_rate: 0.0005       # Old obstacles disappear rate
   min_lifetime: 100          # Minimum steps before despawn possible
+
+# Anti-Bottleneck Diversity Mechanisms
+# Target: 5-20 lineages instead of 1 (bottleneck prevention)
+diversity:
+  enabled: true
+
+  # Speciation - prevents interbreeding between genetically distant organisms
+  speciation_enabled: true
+  min_genetic_distance: 5      # Same species: always compatible
+  max_genetic_distance: 20     # Different species: never compatible
+  boundary_mating_probability: 0.3  # Probability in boundary zone
+
+  # Niches - rewards terrain specialization
+  niche_enabled: true
+  niche_specialist_bonus: 1.4        # 40% bonus for specialists
+  niche_generalist_penalty: 0.85     # 15% penalty for generalists
+  niche_adaptation_time: 150         # Steps to become adapted
+  terrain_diet_synergy_bonus: 1.25   # 25% bonus for diet+terrain match
+
+  # Frequency-dependent selection - favors rare strategies
+  frequency_dependent_enabled: true
+  rare_strategy_max_bonus: 1.6       # 60% max bonus for rare strategies
+  rare_strategy_threshold: 0.08      # <8% population = rare
+  common_strategy_penalty: 0.7       # 30% penalty for common strategies
+  common_strategy_threshold: 0.25    # >25% population = common
+  strategy_classification: "combined" # "diet", "terrain", "brain", or "combined"

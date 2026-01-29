@@ -1,5 +1,7 @@
 //! Sexual reproduction system - sex determination, mating, and inbreeding.
 
+use crate::config::DiversityConfig;
+use crate::genetics::phylogeny::PhylogeneticTree;
 use serde::{Deserialize, Serialize};
 
 /// Biological sex for sexual reproduction
@@ -45,6 +47,10 @@ pub struct SexualReproductionSystem {
     pub inbreeding_events: u64,
     /// Total offspring produced
     pub total_offspring: u64,
+    /// Mating attempts blocked by speciation
+    pub speciation_blocks: u64,
+    /// Mating attempts in boundary zone (partial probability)
+    pub boundary_zone_attempts: u64,
 }
 
 impl SexualReproductionSystem {
@@ -133,6 +139,59 @@ impl SexualReproductionSystem {
         } else {
             self.inbreeding_events as f32 / self.total_matings as f32
         }
+    }
+
+    /// Record a speciation block (incompatible species)
+    pub fn record_speciation_block(&mut self) {
+        self.speciation_blocks += 1;
+    }
+
+    /// Record a boundary zone mating attempt
+    pub fn record_boundary_zone_attempt(&mut self) {
+        self.boundary_zone_attempts += 1;
+    }
+
+    /// Get speciation block rate
+    pub fn speciation_block_rate(&self) -> f32 {
+        let total = self.total_matings + self.failed_matings + self.speciation_blocks;
+        if total == 0 {
+            0.0
+        } else {
+            self.speciation_blocks as f32 / total as f32
+        }
+    }
+}
+
+/// Check speciation compatibility between two organisms based on genetic distance.
+/// Returns (can_mate, probability) where:
+/// - can_mate: false if organisms are completely incompatible species
+/// - probability: 1.0 for same species, interpolated for boundary zone, 0.0 for different species
+pub fn check_speciation_compatibility(
+    org1_id: u64,
+    org2_id: u64,
+    phylogeny: &PhylogeneticTree,
+    config: &DiversityConfig,
+) -> (bool, f32) {
+    if !config.speciation_enabled {
+        return (true, 1.0);
+    }
+
+    let distance = phylogeny
+        .genetic_distance(org1_id, org2_id)
+        .unwrap_or(config.max_genetic_distance + 1);
+
+    if distance <= config.min_genetic_distance {
+        // Same species - always compatible
+        (true, 1.0)
+    } else if distance >= config.max_genetic_distance {
+        // Different species - never compatible
+        (false, 0.0)
+    } else {
+        // Boundary zone - interpolated probability
+        let range = (config.max_genetic_distance - config.min_genetic_distance) as f32;
+        let pos = (distance - config.min_genetic_distance) as f32;
+        let prob = 1.0 - (pos / range) * (1.0 - config.boundary_mating_probability);
+        (true, prob)
     }
 }
 
