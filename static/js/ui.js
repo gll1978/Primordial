@@ -190,17 +190,26 @@ const UI = {
      * Bind settings form
      */
     bindSettings() {
+        // Reference values for proportional scaling (density-based)
+        const BASE_GRID = 80;
+        const BASE_INITIAL_POP = 500;
+        const BASE_MAX_POP = 900;
+
+        // Auto-scale population when grid size changes
+        document.getElementById('grid-size').addEventListener('input', (e) => {
+            const newGridSize = parseInt(e.target.value) || BASE_GRID;
+            const scaleFactor = (newGridSize * newGridSize) / (BASE_GRID * BASE_GRID);
+
+            // Scale populations proportionally to area
+            const newInitialPop = Math.round(BASE_INITIAL_POP * scaleFactor);
+            const newMaxPop = Math.round(BASE_MAX_POP * scaleFactor);
+
+            document.getElementById('initial-pop').value = newInitialPop;
+            document.getElementById('max-pop').value = newMaxPop;
+        });
+
         document.getElementById('btn-apply').addEventListener('click', async () => {
             const settings = {
-                grid_size: parseInt(document.getElementById('grid-size').value),
-                initial_population: parseInt(document.getElementById('initial-pop').value),
-                max_population: parseInt(document.getElementById('max-pop').value),
-                mutation_rate: parseFloat(document.getElementById('mutation-rate').value),
-                food_regen_rate: parseFloat(document.getElementById('food-regen').value),
-                predation_enabled: document.getElementById('predation-enabled').checked,
-                seasons_enabled: document.getElementById('seasons-enabled').checked,
-                terrain_enabled: document.getElementById('terrain-enabled').checked,
-                // Keep other settings from current state
                 ...AppState.settings,
                 grid_size: parseInt(document.getElementById('grid-size').value),
                 initial_population: parseInt(document.getElementById('initial-pop').value),

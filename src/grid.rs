@@ -55,9 +55,9 @@ impl SpatialIndex {
         let mut results = Vec::new();
 
         let x_min = x.saturating_sub(radius) as usize;
-        let x_max = ((x + radius) as usize).min(self.grid_size - 1);
+        let x_max = (x as usize).saturating_add(radius as usize).min(self.grid_size - 1);
         let y_min = y.saturating_sub(radius) as usize;
-        let y_max = ((y + radius) as usize).min(self.grid_size - 1);
+        let y_max = (y as usize).saturating_add(radius as usize).min(self.grid_size - 1);
 
         for dy in y_min..=y_max {
             for dx in x_min..=x_max {
@@ -73,9 +73,9 @@ impl SpatialIndex {
         let mut results = Vec::new();
 
         let x_min = x.saturating_sub(radius) as usize;
-        let x_max = ((x + radius) as usize).min(self.grid_size - 1);
+        let x_max = (x as usize).saturating_add(radius as usize).min(self.grid_size - 1);
         let y_min = y.saturating_sub(radius) as usize;
-        let y_max = ((y + radius) as usize).min(self.grid_size - 1);
+        let y_max = (y as usize).saturating_add(radius as usize).min(self.grid_size - 1);
         let center_x = x as usize;
         let center_y = y as usize;
 

@@ -68,12 +68,9 @@ pub mod organism;
 pub mod stats;
 pub mod world;
 
-// Shared module (used by both GUI and Web)
-#[cfg(any(feature = "gui", feature = "web"))]
+// Shared module (used by Web UI)
+#[cfg(feature = "web")]
 pub mod shared;
-
-#[cfg(feature = "gui")]
-pub mod gui;
 
 #[cfg(feature = "web")]
 pub mod web;

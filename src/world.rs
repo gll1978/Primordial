@@ -171,13 +171,41 @@ impl World {
         // Evolution engine
         let evolution_engine = EvolutionEngine::from_config(&config);
 
-        // Create initial population
+        // Initialize seasonal system
+        let seasonal_system = SeasonalSystem::new(&config.seasons);
+
+        // Initialize terrain grid BEFORE creating organisms (so we can spawn them correctly)
+        let mut terrain_grid = TerrainGrid::new(grid_size);
+        if config.terrain.enabled {
+            if config.terrain.barrier {
+                terrain_grid.generate_with_barrier(config.terrain.barrier_vertical);
+            } else if config.terrain.realistic {
+                // Use new realistic biome-based generation
+                terrain_grid.generate_realistic(seed, &config.terrain.generation);
+            } else if config.terrain.clustered {
+                terrain_grid.generate_clustered(Some(seed));
+            }
+        }
+
+        // Create initial population with terrain-aware spawning
         let mut organisms = Vec::with_capacity(config.safety.max_population);
         let mut next_organism_id = 0u64;
 
         for _ in 0..config.organisms.initial_population {
-            let x = rng.gen_range(0..grid_size as u8);
-            let y = rng.gen_range(0..grid_size as u8);
+            // All initial organisms are terrestrial, so spawn on passable non-water terrain
+            let (x, y) = if config.terrain.enabled {
+                // Find valid spawn position (not in water)
+                terrain_grid
+                    .find_valid_spawn_position(false, &mut rng)
+                    .unwrap_or_else(|| {
+                        // Fallback to random position if no valid terrain found
+                        (rng.gen_range(0..grid_size as u8), rng.gen_range(0..grid_size as u8))
+                    })
+            } else {
+                // No terrain system, spawn anywhere
+                (rng.gen_range(0..grid_size as u8), rng.gen_range(0..grid_size as u8))
+            };
+
             let lineage_id = lineage_tracker.register_lineage(0);
 
             let mut org = Organism::new(next_organism_id, lineage_id, x, y, &config);
@@ -186,19 +214,6 @@ impl World {
             }
             organisms.push(org);
             next_organism_id += 1;
-        }
-
-        // Initialize seasonal system
-        let seasonal_system = SeasonalSystem::new(&config.seasons);
-
-        // Initialize terrain grid
-        let mut terrain_grid = TerrainGrid::new(grid_size);
-        if config.terrain.enabled {
-            if config.terrain.barrier {
-                terrain_grid.generate_with_barrier(config.terrain.barrier_vertical);
-            } else if config.terrain.clustered {
-                terrain_grid.generate_clustered(Some(seed));
-            }
         }
 
         // Initialize food patches
@@ -1809,6 +1824,7 @@ impl World {
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     /// Update terrain adaptation tracking for an organism
+    #[allow(dead_code)]
     fn update_terrain_adaptation(&mut self, org_id: u64, x: u8, y: u8) {
         if !self.config.diversity.enabled || !self.config.diversity.niche_enabled {
             return;
@@ -2040,6 +2056,17 @@ impl World {
             self.next_organism_id += 1;
 
             if let Some(mut child) = self.organisms[idx].reproduce(child_id, &self.config) {
+                // Adjust spawn position based on terrain
+                if self.config.terrain.enabled {
+                    let parent = &self.organisms[idx];
+                    if let Some((new_x, new_y)) = self.terrain_grid.find_valid_spawn_near(
+                        parent.x, parent.y, 3, child.is_aquatic, &mut self.rng
+                    ) {
+                        child.x = new_x;
+                        child.y = new_y;
+                    }
+                }
+
                 // Enable learning if configured
                 if self.config.learning.enabled {
                     child.brain.enable_learning_with_config(&self.config.learning);
@@ -2300,9 +2327,29 @@ impl World {
         };
         child_diet.mutate(self.config.evolution.mutation_strength);
 
-        // Determine child position (near parent1)
-        let child_x = parent1.x;
-        let child_y = parent1.y;
+        // Extract parent data before mutably borrowing self
+        let parent1_id = parent1.id;
+        let parent2_id = parent2.id;
+        let parent1_x = parent1.x;
+        let parent1_y = parent1.y;
+        let parent1_generation = parent1.generation;
+        let parent2_generation = parent2.generation;
+        let parent1_is_predator = parent1.is_predator;
+        let parent2_is_predator = parent2.is_predator;
+        let parent1_is_aquatic = parent1.is_aquatic;
+        let parent2_is_aquatic = parent2.is_aquatic;
+        let child_size = (parent1.size + parent2.size) / 2.0;
+
+        // Determine child position (near parent1, respecting terrain)
+        // If child is aquatic, try to spawn in/near water; otherwise avoid water
+        let child_is_aquatic = parent1_is_aquatic || parent2_is_aquatic;
+        let (child_x, child_y) = if self.config.terrain.enabled {
+            self.terrain_grid
+                .find_valid_spawn_near(parent1_x, parent1_y, 3, child_is_aquatic, &mut self.rng)
+                .unwrap_or((parent1_x, parent1_y))
+        } else {
+            (parent1_x, parent1_y)
+        };
 
         // New lineage ID (mixing lineages)
         let child_lineage = self.next_lineage_id;
@@ -2320,16 +2367,6 @@ impl World {
         // Create child
         let child_id = self.next_organism_id;
         self.next_organism_id += 1;
-
-        let parent1_id = parent1.id;
-        let parent2_id = parent2.id;
-        let parent1_generation = parent1.generation;
-        let parent2_generation = parent2.generation;
-        let parent1_is_predator = parent1.is_predator;
-        let parent2_is_predator = parent2.is_predator;
-        let parent1_is_aquatic = parent1.is_aquatic;
-        let parent2_is_aquatic = parent2.is_aquatic;
-        let child_size = (parent1.size + parent2.size) / 2.0;
 
         let mut child = Organism {
             id: child_id,
@@ -2413,7 +2450,43 @@ impl World {
 
         // Small chance to mutate aquatic trait
         if self.rng.gen::<f32>() < 0.01 {
-            child.is_aquatic = !child.is_aquatic;
+            let new_aquatic = !child.is_aquatic;
+
+            if self.config.terrain.enabled {
+                // Check if mutation is viable given current position
+                let current_terrain = self.terrain_grid.get(child.x, child.y);
+
+                if new_aquatic {
+                    // Becoming aquatic: must be in water or adjacent to water
+                    if current_terrain == Terrain::Water || self.terrain_grid.is_adjacent_to_water(child.x, child.y) {
+                        // Try to move to water if not already there
+                        if current_terrain != Terrain::Water {
+                            if let Some((wx, wy)) = self.terrain_grid.find_valid_spawn_near(child.x, child.y, 5, true, &mut self.rng) {
+                                child.x = wx;
+                                child.y = wy;
+                            }
+                        }
+                        child.is_aquatic = new_aquatic;
+                    }
+                    // If not near water, mutation fails (child stays terrestrial)
+                } else {
+                    // Becoming terrestrial: must be on land or adjacent to land
+                    if current_terrain != Terrain::Water || self.terrain_grid.is_adjacent_to_water(child.x, child.y) {
+                        // Try to move to land if currently in water
+                        if current_terrain == Terrain::Water {
+                            if let Some((lx, ly)) = self.terrain_grid.find_valid_spawn_near(child.x, child.y, 5, false, &mut self.rng) {
+                                child.x = lx;
+                                child.y = ly;
+                            }
+                        }
+                        child.is_aquatic = new_aquatic;
+                    }
+                    // If surrounded by water, mutation fails (child stays aquatic)
+                }
+            } else {
+                // No terrain system, mutation always succeeds
+                child.is_aquatic = new_aquatic;
+            }
         }
 
         // Deduct energy from parents and set cooldown
@@ -2508,13 +2581,16 @@ impl World {
                 }
 
                 let attacker = &self.organisms[idx];
+                let attacker_is_aquatic = attacker.is_aquatic;
 
                 // Find nearest target in range
+                // Aquatics can only attack aquatics, terrestrials can only attack terrestrials
                 let neighbors = self.spatial_index.query_neighbors(attacker.x, attacker.y, 1);
                 for &neighbor_idx in &neighbors {
                     if neighbor_idx < self.organisms.len()
                         && self.organisms[neighbor_idx].is_alive()
                         && neighbor_idx != idx
+                        && self.organisms[neighbor_idx].is_aquatic == attacker_is_aquatic
                     {
                         attacks.push((idx, neighbor_idx));
                         break; // One attack per organism

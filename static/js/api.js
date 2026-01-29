@@ -89,8 +89,9 @@ const API = {
     async updateSettings(settings) {
         await this.post('/api/settings', settings);
         AppState.setSettings(settings);
-        AppState.setSimState('Paused');
         AppState.clearHistory();
+        // Auto-start simulation after applying new settings
+        await this.resume();
     },
 
     // --- State ---

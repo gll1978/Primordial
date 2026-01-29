@@ -90,9 +90,24 @@ food:
 # Fase 2 Week 2: Terrain & Depletion
 terrain:
   enabled: true  # Creates geographic barriers for population isolation
-  clustered: true
+  clustered: false
   barrier: false
   barrier_vertical: true
+  realistic: true  # Use realistic biome-based terrain generation
+  generation:
+    elevation_scale: 0.05
+    humidity_scale: 0.04
+    mountain_threshold: 0.7
+    water_threshold: 0.25
+    mountain_ridge_count: 2
+    lake_count: 3
+    lake_min_radius: 2
+    lake_max_radius: 5
+    river_count: 2
+    smoothing_passes: 2
+    noise_octaves: 4
+    noise_persistence: 0.5
+    noise_lacunarity: 2.0
 
 depletion:
   enabled: false  # Optional - can be enabled for extra pressure

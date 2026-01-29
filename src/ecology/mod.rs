@@ -27,4 +27,4 @@ pub use food_types::{DietSpecialization, FoodCell, FoodConfig};
 pub use large_prey::{CooperationManager, CooperationSignal, LargePrey, LargePreyConfig, TrustRelationship};
 pub use predation::PredationConfig;
 pub use seasons::{Season, SeasonalSystem, SeasonsConfig};
-pub use terrain::{Terrain, TerrainConfig, TerrainGrid};
+pub use terrain::{Terrain, TerrainConfig, TerrainGenerationConfig, TerrainGrid};
