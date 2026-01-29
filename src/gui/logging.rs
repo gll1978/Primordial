@@ -4,8 +4,7 @@ use std::fs::{self, File};
 use std::io::Write;
 use std::path::PathBuf;
 
-use crate::gui::commands::SimSettings;
-use crate::gui::snapshot::WorldSnapshot;
+use crate::shared::{SimSettings, WorldSnapshot};
 
 /// A single data point in the simulation history
 #[derive(Clone, Debug)]

@@ -2,7 +2,7 @@
 
 use egui::Ui;
 
-use crate::gui::commands::{SimCommand, SimState};
+use crate::shared::{SimCommand, SimState};
 
 /// Control panel for simulation playback
 pub struct ControlPanel {

@@ -2,7 +2,7 @@
 
 use egui::Ui;
 
-use crate::gui::commands::SimSettings;
+use crate::shared::SimSettings;
 
 /// Settings panel for configuring simulation parameters
 pub struct SettingsPanel {

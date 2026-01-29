@@ -1,7 +1,9 @@
-//! Commands for controlling the simulation from the GUI.
+//! Commands for controlling the simulation from the GUI/Web UI.
 
-/// Commands sent from GUI to simulation thread
-#[derive(Debug, Clone)]
+use serde::{Deserialize, Serialize};
+
+/// Commands sent from GUI/Web UI to simulation thread
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SimCommand {
     /// Pause the simulation
     Pause,
@@ -21,8 +23,8 @@ pub enum SimCommand {
     Shutdown,
 }
 
-/// Simulation settings that can be modified from GUI
-#[derive(Debug, Clone)]
+/// Simulation settings that can be modified from GUI/Web UI
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SimSettings {
     /// Maximum population limit
     pub max_population: usize,
@@ -140,7 +142,7 @@ impl SimSettings {
 }
 
 /// Current simulation state
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SimState {
     /// Simulation is running
     Running,

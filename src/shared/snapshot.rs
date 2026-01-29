@@ -1,13 +1,15 @@
-//! Snapshot structures for GUI communication.
+//! Snapshot structures for GUI/Web UI communication.
 //!
 //! These are lightweight copies of simulation state, optimized for
-//! fast transfer between simulation and render threads.
+//! fast transfer between simulation and render threads/clients.
+
+use serde::{Deserialize, Serialize};
 
 use crate::ecology::terrain::Terrain;
 use crate::stats::Stats;
 
 /// Lightweight view of an organism for rendering
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct OrganismView {
     pub id: u64,
     pub x: u8,
@@ -22,7 +24,7 @@ pub struct OrganismView {
 }
 
 /// Detailed organism info for the selected organism panel
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct OrganismDetail {
     pub id: u64,
     pub x: u8,
@@ -43,7 +45,7 @@ pub struct OrganismDetail {
 }
 
 /// Simplified layer representation for brain visualization
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LayerView {
     /// Input dimension
     pub inputs: usize,
@@ -56,7 +58,7 @@ pub struct LayerView {
 }
 
 /// Complete world snapshot for rendering
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct WorldSnapshot {
     /// Current simulation time
     pub time: u64,
@@ -196,9 +198,9 @@ pub fn u8_to_terrain(value: u8) -> Terrain {
 pub fn terrain_color(terrain: Terrain) -> (u8, u8, u8) {
     match terrain {
         Terrain::Plain => (144, 238, 144),   // Light green
-        Terrain::Forest => (34, 139, 34),     // Forest green
+        Terrain::Forest => (34, 139, 34),    // Forest green
         Terrain::Mountain => (139, 137, 137), // Gray
-        Terrain::Desert => (238, 213, 145),   // Sandy
-        Terrain::Water => (65, 105, 225),     // Royal blue
+        Terrain::Desert => (238, 213, 145),  // Sandy
+        Terrain::Water => (65, 105, 225),    // Royal blue
     }
 }

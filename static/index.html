@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PRIMORDIAL V2 - Ecosystem Simulator</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Header / Control Bar -->
+        <header id="control-bar">
+            <div class="controls-left">
+                <button id="btn-play" class="control-btn" title="Play/Pause">
+                    <span id="play-icon">&#9658;</span>
+                </button>
+                <button id="btn-step" class="control-btn" title="Single Step">&#9197;</button>
+                <button id="btn-reset" class="control-btn" title="Reset">&#128260;</button>
+
+                <div class="speed-control">
+                    <label for="speed-slider">Speed:</label>
+                    <input type="range" id="speed-slider" min="0.1" max="10" step="0.1" value="1">
+                    <span id="speed-value">1.0x</span>
+                </div>
+            </div>
+
+            <div class="controls-right">
+                <span id="connection-status" class="status disconnected">Disconnected</span>
+                <span class="app-title">PRIMORDIAL V2</span>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main id="main-content">
+            <!-- World View (Canvas) -->
+            <section id="world-container">
+                <canvas id="world-canvas"></canvas>
+                <div id="canvas-controls">
+                    <label><input type="checkbox" id="show-food" checked> Food</label>
+                    <label><input type="checkbox" id="show-grid"> Grid</label>
+                    <label>Zoom: <input type="range" id="zoom-slider" min="0.5" max="3" step="0.1" value="1"></label>
+                </div>
+            </section>
+
+            <!-- Sidebar -->
+            <aside id="sidebar">
+                <!-- Settings Panel -->
+                <section class="panel collapsible" id="settings-panel">
+                    <h3 class="panel-header" data-toggle="settings-content">
+                        <span class="toggle-icon">&#9660;</span> Settings
+                    </h3>
+                    <div class="panel-content" id="settings-content">
+                        <div class="form-group">
+                            <label>Grid Size (max 255):</label>
+                            <input type="number" id="grid-size" min="20" max="255" value="80">
+                        </div>
+                        <div class="form-group">
+                            <label>Initial Population:</label>
+                            <input type="number" id="initial-pop" min="10" max="1000" value="200">
+                        </div>
+                        <div class="form-group">
+                            <label>Max Population:</label>
+                            <input type="number" id="max-pop" min="100" max="50000" value="5000">
+                        </div>
+                        <div class="form-group">
+                            <label>Mutation Rate:</label>
+                            <input type="number" id="mutation-rate" min="0" max="1" step="0.01" value="0.05">
+                        </div>
+                        <div class="form-group">
+                            <label>Food Regen Rate:</label>
+                            <input type="number" id="food-regen" min="0.01" max="2" step="0.01" value="0.3">
+                        </div>
+                        <div class="form-group">
+                            <label><input type="checkbox" id="predation-enabled" checked> Predation</label>
+                        </div>
+                        <div class="form-group">
+                            <label><input type="checkbox" id="seasons-enabled" checked> Seasons</label>
+                        </div>
+                        <div class="form-group">
+                            <label><input type="checkbox" id="terrain-enabled" checked> Terrain</label>
+                        </div>
+                        <button id="btn-apply" class="btn-primary">Apply & Reset</button>
+                    </div>
+                </section>
+
+                <!-- Statistics Panel -->
+                <section class="panel" id="stats-panel">
+                    <h3 class="panel-header">Statistics</h3>
+                    <div class="panel-content">
+                        <div class="stat-row">
+                            <span>Time:</span>
+                            <span id="stat-time">0</span>
+                        </div>
+                        <div class="stat-row">
+                            <span>Population:</span>
+                            <span id="stat-population">0</span>
+                        </div>
+                        <div class="stat-row">
+                            <span>Generation:</span>
+                            <span id="stat-generation">0</span>
+                        </div>
+                        <div class="stat-row">
+                            <span>Avg Energy:</span>
+                            <span id="stat-energy">0</span>
+                        </div>
+                        <div class="stat-row">
+                            <span>Lineages:</span>
+                            <span id="stat-lineages">0</span>
+                        </div>
+                        <div class="stat-row">
+                            <span>Brain Mean:</span>
+                            <span id="stat-brain">0</span>
+                        </div>
+                        <div class="stat-row">
+                            <span>Total Food:</span>
+                            <span id="stat-food">0</span>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Population Chart -->
+                <section class="panel collapsible" id="chart-panel">
+                    <h3 class="panel-header" data-toggle="chart-content">
+                        <span class="toggle-icon">&#9660;</span> Population Graph
+                    </h3>
+                    <div class="panel-content" id="chart-content">
+                        <canvas id="population-chart" height="100"></canvas>
+                    </div>
+                </section>
+
+                <!-- Brain Complexity Chart -->
+                <section class="panel collapsible" id="brain-chart-panel">
+                    <h3 class="panel-header" data-toggle="brain-chart-content">
+                        <span class="toggle-icon">&#9660;</span> Brain Complexity Graph
+                    </h3>
+                    <div class="panel-content" id="brain-chart-content">
+                        <canvas id="brain-chart" height="100"></canvas>
+                    </div>
+                </section>
+
+                <!-- Selected Organism -->
+                <section class="panel" id="organism-panel" style="display: none;">
+                    <h3 class="panel-header">Selected Organism</h3>
+                    <div class="panel-content" id="organism-details">
+                        <!-- Filled by JS -->
+                    </div>
+                </section>
+            </aside>
+        </main>
+
+        <!-- Footer / Status Bar -->
+        <footer id="status-bar">
+            <span id="status-time">Time: 0</span>
+            <span id="status-pop">Pop: 0</span>
+            <span id="status-gen">Gen: 0</span>
+            <span id="status-state">State: Paused</span>
+        </footer>
+    </div>
+
+    <!-- Scripts -->
+    <script src="/js/state.js"></script>
+    <script src="/js/api.js"></script>
+    <script src="/js/websocket.js"></script>
+    <script src="/js/canvas.js"></script>
+    <script src="/js/charts.js"></script>
+    <script src="/js/ui.js"></script>
+    <script src="/js/main.js"></script>
+</body>
+</html>

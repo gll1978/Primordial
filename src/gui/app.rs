@@ -3,11 +3,9 @@
 use eframe::egui;
 
 use crate::config::Config;
+use crate::shared::{SimCommand, SimSettings, SimulationHandle, WorldSnapshot};
 
-use super::commands::{SimCommand, SimSettings};
 use super::logging::LogPanel;
-use super::sim_thread::SimulationHandle;
-use super::snapshot::WorldSnapshot;
 use super::views::{BrainView, ControlPanel, SettingsPanel, StatsPanel, WorldView};
 
 /// Main application state

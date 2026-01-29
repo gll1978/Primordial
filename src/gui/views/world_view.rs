@@ -2,7 +2,8 @@
 
 use egui::{Color32, Pos2, Rect, Sense, Stroke, Ui, Vec2};
 
-use crate::gui::snapshot::{terrain_color, u8_to_terrain, OrganismView, WorldSnapshot};
+use crate::shared::snapshot::{terrain_color, u8_to_terrain};
+use crate::shared::{OrganismView, WorldSnapshot};
 
 /// World view for rendering the simulation grid
 pub struct WorldView {

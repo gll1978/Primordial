@@ -3,7 +3,7 @@
 use egui::Ui;
 use egui_plot::{Line, Plot, PlotPoints};
 
-use crate::gui::snapshot::{OrganismDetail, WorldSnapshot};
+use crate::shared::{OrganismDetail, WorldSnapshot};
 
 /// Stats panel showing simulation metrics and selected organism info
 pub struct StatsPanel {

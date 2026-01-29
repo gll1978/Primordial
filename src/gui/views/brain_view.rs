@@ -2,7 +2,7 @@
 
 use egui::{Color32, Pos2, Stroke, Ui, Vec2};
 
-use crate::gui::snapshot::OrganismDetail;
+use crate::shared::OrganismDetail;
 
 /// Input neuron labels
 const INPUT_LABELS: &[&str] = &[
