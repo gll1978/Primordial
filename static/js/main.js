@@ -15,6 +15,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Initialize charts
         PopulationChart.init();
         BrainChart.init();
+        SpeciesChart.init();
 
         // Load initial settings from server
         try {
