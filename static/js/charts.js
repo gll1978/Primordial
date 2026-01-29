@@ -290,7 +290,6 @@ const SpeciesChart = {
         }
 
         this.ctx = this.canvas.getContext('2d');
-        console.log('SpeciesChart initialized, canvas:', this.canvas, 'ctx:', this.ctx);
 
         // Subscribe to snapshot updates
         AppState.subscribe('snapshotUpdate', (snapshot) => {
@@ -340,10 +339,7 @@ const SpeciesChart = {
      * Render the pie chart
      */
     render() {
-        if (!this.canvas || !this.ctx) {
-            console.warn('SpeciesChart render: canvas or ctx missing');
-            return;
-        }
+        if (!this.canvas || !this.ctx) return;
 
         // Update canvas size dynamically - get parent width or use minimum
         let containerWidth = this.canvas.parentElement?.clientWidth ||
@@ -354,8 +350,6 @@ const SpeciesChart = {
 
         this.canvas.width = containerWidth;
         this.canvas.height = 150;
-
-        console.log('SpeciesChart render: width=', containerWidth, 'data=', this.data);
 
         const ctx = this.ctx;
         const width = this.canvas.width;
