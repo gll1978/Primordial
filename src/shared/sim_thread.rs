@@ -242,6 +242,7 @@ fn run_simulation(
                         }
                     }
                     selected_id = None;
+                    last_memory_check = 0;
                     let _ = snapshot_tx.send(WorldSnapshot::from_world(&world, selected_id));
                 }
                 SimCommand::ResetWithSettings(settings) => {
@@ -269,6 +270,7 @@ fn run_simulation(
                         }
                     }
                     selected_id = None;
+                    last_memory_check = 0;
                     state = SimState::Paused;
                     log::debug!(
                         "[SIM] Creating snapshot for grid_size={}...",
@@ -371,7 +373,7 @@ fn run_simulation(
                 }
 
                 // Memory check periodically
-                if world.time - last_memory_check >= MEMORY_CHECK_INTERVAL {
+                if world.time.saturating_sub(last_memory_check) >= MEMORY_CHECK_INTERVAL {
                     last_memory_check = world.time;
                     match memory_monitor.check(world.time) {
                         MemoryAction::Critical(stats) => {

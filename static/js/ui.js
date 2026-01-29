@@ -195,9 +195,9 @@ const UI = {
         const BASE_INITIAL_POP = 500;
         const BASE_MAX_POP = 900;
 
-        // Auto-scale population when grid size changes
-        document.getElementById('grid-size').addEventListener('input', (e) => {
-            const newGridSize = parseInt(e.target.value) || BASE_GRID;
+        // Function to update population based on grid size
+        const updatePopulationFromGrid = (gridSize) => {
+            const newGridSize = parseInt(gridSize) || BASE_GRID;
             const scaleFactor = (newGridSize * newGridSize) / (BASE_GRID * BASE_GRID);
 
             // Scale populations proportionally to area
@@ -206,7 +206,12 @@ const UI = {
 
             document.getElementById('initial-pop').value = newInitialPop;
             document.getElementById('max-pop').value = newMaxPop;
-        });
+        };
+
+        // Auto-scale population when grid size changes (both input and change events)
+        const gridSizeInput = document.getElementById('grid-size');
+        gridSizeInput.addEventListener('input', (e) => updatePopulationFromGrid(e.target.value));
+        gridSizeInput.addEventListener('change', (e) => updatePopulationFromGrid(e.target.value));
 
         document.getElementById('btn-apply').addEventListener('click', async () => {
             const settings = {
