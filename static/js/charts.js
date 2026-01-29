@@ -284,13 +284,12 @@ const SpeciesChart = {
      */
     init() {
         this.canvas = document.getElementById('species-chart');
-        if (!this.canvas) return;
+        if (!this.canvas) {
+            console.warn('Species chart canvas not found');
+            return;
+        }
 
         this.ctx = this.canvas.getContext('2d');
-
-        // Set actual size
-        this.canvas.width = this.canvas.offsetWidth;
-        this.canvas.height = 150;
 
         // Subscribe to snapshot updates
         AppState.subscribe('snapshotUpdate', (snapshot) => {
@@ -305,6 +304,9 @@ const SpeciesChart = {
             this.data = { predators: 0, herbivores: 0, aquatic: 0 };
             this.render();
         });
+
+        // Initial render
+        this.render();
     },
 
     /**
@@ -337,6 +339,13 @@ const SpeciesChart = {
      * Render the pie chart
      */
     render() {
+        if (!this.canvas || !this.ctx) return;
+
+        // Update canvas size dynamically
+        const containerWidth = this.canvas.offsetWidth || this.canvas.parentElement?.offsetWidth || 250;
+        this.canvas.width = containerWidth;
+        this.canvas.height = 150;
+
         const ctx = this.ctx;
         const width = this.canvas.width;
         const height = this.canvas.height;

@@ -270,11 +270,14 @@ body {
     background-color: #4caf50;
 }
 
-/* Chart */
-#population-chart {
+/* Charts */
+#population-chart,
+#brain-chart,
+#species-chart {
     width: 100%;
     background-color: var(--bg-primary);
     border-radius: 4px;
+    display: block;
 }
 
 /* Organism Tooltip */
