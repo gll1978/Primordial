@@ -204,6 +204,8 @@ const UI = {
             const newInitialPop = Math.round(BASE_INITIAL_POP * scaleFactor);
             const newMaxPop = Math.round(BASE_MAX_POP * scaleFactor);
 
+            console.log(`Grid size changed: ${newGridSize}, scale: ${scaleFactor.toFixed(2)}, pop: ${newInitialPop}/${newMaxPop}`);
+
             document.getElementById('initial-pop').value = newInitialPop;
             document.getElementById('max-pop').value = newMaxPop;
         };
@@ -227,6 +229,7 @@ const UI = {
                 terrain_enabled: true,
             };
 
+            console.log('Applying settings:', settings);
             await API.updateSettings(settings);
         });
     },
