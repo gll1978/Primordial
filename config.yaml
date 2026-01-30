@@ -166,7 +166,7 @@ behavior_tracking:
 database:
   enabled: true
   url: "postgresql://primordial:primordial@localhost/primordial_v2"
-  snapshot_interval: 100
+  snapshot_interval: 25  # Reduced from 100 for better movement tracking
   log_learning_events: true
 
 # Phase 3: Lifetime Learning (Hebbian) + Phase 2 Feature 3 Enhancements
