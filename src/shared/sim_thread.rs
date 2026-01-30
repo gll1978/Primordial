@@ -274,18 +274,8 @@ fn run_simulation(
                     selected_id = None;
                     last_memory_check = 0;
                     state = SimState::Paused;
-                    log::debug!(
-                        "[SIM] Creating snapshot for grid_size={}...",
-                        current_config.world.grid_size
-                    );
                     let snapshot = WorldSnapshot::from_world(&world, selected_id);
-                    log::debug!(
-                        "[SIM] Snapshot created: grid_size={}, organisms={}",
-                        snapshot.grid_size,
-                        snapshot.organisms.len()
-                    );
-                    let send_result = snapshot_tx.send(snapshot);
-                    log::debug!("[SIM] Snapshot sent: {:?}", send_result.is_ok());
+                    let _ = snapshot_tx.send(snapshot);
                 }
                 SimCommand::SaveCheckpoint => {
                     // Manual checkpoint save

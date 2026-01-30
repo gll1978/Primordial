@@ -544,10 +544,14 @@ impl Database {
 
 impl Drop for Database {
     fn drop(&mut self) {
-        // If shutdown wasn't called explicitly, just drop the sender
-        // which will cause the writer thread to flush and exit
+        // Send shutdown event to cleanly terminate the writer thread
+        let _ = self.sender.send(DbEvent::Shutdown {
+            total_steps: 0,
+            final_population: 0,
+            max_generation: 0,
+        });
+        // Wait for writer thread to finish
         if let Some(handle) = self.writer_handle.take() {
-            drop(self.sender.clone()); // Extra clone won't help, but original sender drops with self
             let _ = handle.join();
         }
     }
