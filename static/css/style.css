@@ -101,6 +101,44 @@ body {
     color: white;
 }
 
+/* Day/Night and Season indicators */
+.day-night-badge, .season-badge {
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 14px;
+    margin-left: 8px;
+}
+
+.day-night-badge {
+    background-color: var(--bg-panel);
+    font-size: 16px;
+}
+
+.season-badge {
+    background-color: var(--bg-panel);
+    font-weight: 500;
+}
+
+.season-badge.spring {
+    background-color: #4caf50;
+    color: white;
+}
+
+.season-badge.summer {
+    background-color: #ff9800;
+    color: white;
+}
+
+.season-badge.autumn {
+    background-color: #795548;
+    color: white;
+}
+
+.season-badge.winter {
+    background-color: #2196f3;
+    color: white;
+}
+
 /* Main Content */
 #main-content {
     display: flex;

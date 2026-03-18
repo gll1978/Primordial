@@ -74,6 +74,16 @@ pub struct WorldSnapshot {
     pub grid_size: usize,
     /// Currently selected organism (if any)
     pub selected_organism: Option<OrganismDetail>,
+    /// Whether it's currently daytime (true) or night (false)
+    pub is_daytime: bool,
+    /// Current season name
+    pub current_season: String,
+    /// Flattened temperature grid (optional, for visualization)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub temperature_grid: Option<Vec<f32>>,
+    /// Flattened humidity grid (optional, for visualization)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub humidity_grid: Option<Vec<f32>>,
 }
 
 impl WorldSnapshot {
@@ -156,6 +166,28 @@ impl WorldSnapshot {
                 })
         });
 
+        // Calculate day/night status
+        let is_daytime = if world.config.day_night.enabled {
+            let cycle_pos = world.time % world.config.day_night.cycle_length;
+            let half_cycle = world.config.day_night.cycle_length / 2;
+            cycle_pos < half_cycle
+        } else {
+            true // Always day when disabled
+        };
+
+        // Get current season name
+        let current_season = world.seasonal_system.current_season.name().to_string();
+
+        // Get temperature and humidity grids if climate is enabled
+        let (temperature_grid, humidity_grid) = if world.climate_system.is_enabled() {
+            (
+                Some(world.climate_system.flatten_temperature()),
+                Some(world.climate_system.flatten_humidity()),
+            )
+        } else {
+            (None, None)
+        };
+
         Self {
             time: world.time,
             stats: world.stats.clone(),
@@ -164,6 +196,10 @@ impl WorldSnapshot {
             terrain_grid,
             grid_size,
             selected_organism,
+            is_daytime,
+            current_season,
+            temperature_grid,
+            humidity_grid,
         }
     }
 }

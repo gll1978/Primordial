@@ -2,7 +2,7 @@
 //!
 //! Supports YAML configuration files with sensible defaults.
 
-use crate::ecology::{DepletionConfig, DynamicObstacleConfig, EnvironmentConfig, FoodConfig, LargePreyConfig, PredationConfig, SeasonsConfig, TerrainConfig};
+use crate::ecology::{ClimateConfig, DepletionConfig, DynamicObstacleConfig, EnvironmentConfig, FoodConfig, LargePreyConfig, PredationConfig, SeasonsConfig, TerrainConfig};
 use crate::genetics::sex::SexualReproductionConfig;
 use crate::neural::LearningConfig;
 use serde::{Deserialize, Serialize};
@@ -68,6 +68,9 @@ pub struct Config {
     // Anti-bottleneck diversity mechanisms
     #[serde(default)]
     pub diversity: DiversityConfig,
+    // Climate system (temperature and humidity)
+    #[serde(default)]
+    pub climate: ClimateConfig,
 }
 
 /// Database configuration for individual organism tracking
@@ -81,6 +84,8 @@ pub struct DatabaseConfig {
     pub snapshot_interval: u64,
     /// Whether to log learning events
     pub log_learning_events: bool,
+    /// Whether to log environment state (season, day/night, climate)
+    pub log_environment_state: bool,
 }
 
 impl Default for DatabaseConfig {
@@ -90,6 +95,7 @@ impl Default for DatabaseConfig {
             url: "postgresql://primordial:primordial@localhost/primordial_v2".to_string(),
             snapshot_interval: 100,
             log_learning_events: false,
+            log_environment_state: true,
         }
     }
 }
@@ -229,7 +235,7 @@ pub struct DayNightConfig {
 impl Default for DayNightConfig {
     fn default() -> Self {
         Self {
-            enabled: false,
+            enabled: true,  // Day/night cycle enabled by default
             cycle_length: 2000,
             night_vision_penalty: 0.3,
             night_olfaction_bonus: 1.5,
@@ -500,6 +506,7 @@ impl Default for Config {
             memory: MemoryConfig::default(),
             dynamic_obstacles: DynamicObstacleConfig::default(),
             diversity: DiversityConfig::default(),
+            climate: ClimateConfig::default(),
         }
     }
 }

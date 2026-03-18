@@ -55,6 +55,17 @@ impl Season {
         }
     }
 
+    /// Get reproduction multiplier for this season
+    /// Reproduction is favored in spring, penalized in winter
+    pub fn reproduction_multiplier(&self) -> f32 {
+        match self {
+            Season::Spring => 1.2,  // Bonus primavera
+            Season::Summer => 1.0,  // Baseline
+            Season::Autumn => 0.8,  // Leggera penalità
+            Season::Winter => 0.5,  // Forte penalità
+        }
+    }
+
     /// Get current season based on world time
     pub fn from_time(time: u64, season_length: u64) -> Season {
         if season_length == 0 {
@@ -154,6 +165,16 @@ impl SeasonalSystem {
     pub fn energy_multiplier(&self) -> f32 {
         if self.enabled {
             self.current_season.energy_multiplier()
+        } else {
+            1.0
+        }
+    }
+
+    /// Get reproduction multiplier
+    /// Reproduction is favored in spring, penalized in winter
+    pub fn reproduction_multiplier(&self) -> f32 {
+        if self.enabled {
+            self.current_season.reproduction_multiplier()
         } else {
             1.0
         }
@@ -260,5 +281,35 @@ mod tests {
         // Winter
         system.update(3000);
         assert!((system.energy_multiplier() - 1.4).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_reproduction_multipliers() {
+        // Reproduction favored in spring, penalized in winter
+        assert!((Season::Spring.reproduction_multiplier() - 1.2).abs() < 0.01);
+        assert!((Season::Summer.reproduction_multiplier() - 1.0).abs() < 0.01);
+        assert!((Season::Autumn.reproduction_multiplier() - 0.8).abs() < 0.01);
+        assert!((Season::Winter.reproduction_multiplier() - 0.5).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_seasonal_system_reproduction() {
+        let config = SeasonsConfig::default();
+        let mut system = SeasonalSystem::new(&config);
+
+        // Spring - bonus
+        assert!((system.reproduction_multiplier() - 1.2).abs() < 0.01);
+
+        // Summer - baseline
+        system.update(1000);
+        assert!((system.reproduction_multiplier() - 1.0).abs() < 0.01);
+
+        // Autumn - slight penalty
+        system.update(2000);
+        assert!((system.reproduction_multiplier() - 0.8).abs() < 0.01);
+
+        // Winter - strong penalty
+        system.update(3000);
+        assert!((system.reproduction_multiplier() - 0.5).abs() < 0.01);
     }
 }

@@ -250,15 +250,16 @@ pub struct TerrainGenerationConfig {
 impl Default for TerrainGenerationConfig {
     fn default() -> Self {
         Self {
-            elevation_scale: 0.05,
-            humidity_scale: 0.04,
-            mountain_threshold: 0.7,
-            water_threshold: 0.25,
-            mountain_ridge_count: 2,
-            lake_count: 3,
+            // Adjusted for more biome variety
+            elevation_scale: 0.03,      // Larger features (was 0.05)
+            humidity_scale: 0.025,      // Wider humidity variations (was 0.04)
+            mountain_threshold: 0.65,   // More mountains (was 0.7)
+            water_threshold: 0.30,      // More water bodies (was 0.25)
+            mountain_ridge_count: 3,    // More ridges (was 2)
+            lake_count: 4,              // More lakes (was 3)
             lake_min_radius: 2,
-            lake_max_radius: 5,
-            river_count: 2,
+            lake_max_radius: 6,         // Larger lakes possible (was 5)
+            river_count: 3,             // More rivers (was 2)
             smoothing_passes: 2,
             noise_octaves: 4,
             noise_persistence: 0.5,

@@ -176,6 +176,10 @@ pub struct CognitiveInputs {
     pub own_attack_power: f32,           // Our own attack capability (0-1)
     pub time_since_last_coop: f32,       // Normalized time since last cooperation (0-1)
     pub prey_escape_urgency: f32,        // How close prey is to escaping (0-1)
+
+    // Climate Sensing - 2 new inputs
+    pub temperature_local: f32,          // Local temperature: -1.0 (cold) to 1.0 (hot)
+    pub humidity_local: f32,             // Local humidity: 0.0 (dry) to 1.0 (humid)
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1009,9 +1013,11 @@ impl Organism {
         inputs[89] = cognitive.time_since_last_coop;
         inputs[90] = cognitive.prey_escape_urgency;
 
-        // [91-94] Reserved for future use
-        inputs[91] = 0.0;
-        inputs[92] = 0.0;
+        // [91-92] Climate Sensing
+        inputs[91] = cognitive.temperature_local;  // Local temperature (-1.0 cold to 1.0 hot)
+        inputs[92] = cognitive.humidity_local;     // Local humidity (0.0 dry to 1.0 humid)
+
+        // [93-94] Reserved for future use
         inputs[93] = 0.0;
         inputs[94] = 0.0;
 
@@ -1128,6 +1134,12 @@ impl Organism {
 
     /// Update organism state (age, metabolism)
     pub fn update(&mut self, config: &Config) {
+        // Default to no climate modifier
+        self.update_with_climate(config, 1.0);
+    }
+
+    /// Update organism state with climate-based metabolism modifier
+    pub fn update_with_climate(&mut self, config: &Config, climate_metabolism_modifier: f32) {
         self.age += 1;
 
         // Metabolic cost
@@ -1159,8 +1171,10 @@ impl Organism {
             0.0
         };
 
-        // Total metabolic cost
-        let total_cost = base_cost + size_cost - brain_bonus + brain_tax_cost;
+        // Total metabolic cost (with climate modifier)
+        // Cold temperatures increase metabolism, hot temperatures also increase it slightly
+        let base_metabolism = base_cost + size_cost - brain_bonus + brain_tax_cost;
+        let total_cost = base_metabolism * climate_metabolism_modifier;
 
         // Ensure minimum metabolism of 0.08 to maintain population stability
         self.energy -= total_cost.max(0.08);

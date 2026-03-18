@@ -127,3 +127,19 @@ CREATE TABLE IF NOT EXISTS world_snapshots (
 );
 
 CREATE INDEX IF NOT EXISTS idx_world_run_step ON world_snapshots(run_id, step);
+
+-- Environment state snapshots (season, day/night, climate)
+CREATE TABLE IF NOT EXISTS environment_state (
+    id BIGSERIAL PRIMARY KEY,
+    run_id UUID NOT NULL REFERENCES simulation_runs(run_id),
+    step BIGINT NOT NULL,
+    season TEXT NOT NULL,  -- 'Spring', 'Summer', 'Autumn', 'Winter'
+    is_daytime BOOLEAN NOT NULL,
+    day_night_cycle_pos BIGINT,  -- Position within cycle (0 to cycle_length)
+    avg_temperature REAL,  -- Average grid temperature (-1.0 to 1.0)
+    avg_humidity REAL,     -- Average grid humidity (0.0 to 1.0)
+    food_regen_multiplier REAL,  -- Current food regeneration rate
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_environment_run_step ON environment_state(run_id, step);

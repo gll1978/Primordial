@@ -138,6 +138,9 @@ pub struct World {
     strategy_frequencies: HashMap<String, usize>,
     /// Last step when frequencies were updated
     last_frequency_update: u64,
+
+    // Climate system (temperature and humidity)
+    pub climate_system: crate::ecology::climate::ClimateSystem,
 }
 
 impl World {
@@ -242,6 +245,13 @@ impl World {
             None
         };
 
+        // Initialize climate system
+        let climate_system = crate::ecology::climate::ClimateSystem::new(
+            grid_size,
+            &terrain_grid,
+            &config.climate,
+        );
+
         // Initialize genetics systems
         let mut phylogeny = PhylogeneticTree::new();
         let sexual_reproduction = SexualReproductionSystem::new();
@@ -322,6 +332,7 @@ impl World {
             terrain_adaptation: HashMap::new(),
             strategy_frequencies: HashMap::new(),
             last_frequency_update: 0,
+            climate_system,
         };
 
         // Initial spatial index update
@@ -398,6 +409,14 @@ impl World {
             None
         };
 
+        // Initialize climate system
+        let mut climate_system = crate::ecology::climate::ClimateSystem::new(
+            grid_size,
+            &terrain_grid,
+            &checkpoint.config.climate,
+        );
+        climate_system.update(checkpoint.time, &terrain_grid, seasonal_system.current_season);
+
         // New genetics systems (state not preserved in checkpoint)
         let phylogeny = PhylogeneticTree::new();
         let sexual_reproduction = SexualReproductionSystem::new();
@@ -467,6 +486,7 @@ impl World {
             terrain_adaptation: HashMap::new(),
             strategy_frequencies: HashMap::new(),
             last_frequency_update: 0,
+            climate_system,
         };
 
         world.update_spatial_index();
@@ -497,6 +517,9 @@ impl World {
 
         // Phase 0: Update seasonal system
         self.seasonal_system.update(self.time);
+
+        // Phase 0.25: Update climate system (temperature and humidity)
+        self.climate_system.update(self.time, &self.terrain_grid, self.seasonal_system.current_season);
 
         // Phase 0.5: Update dynamic obstacles (Phase 2 Feature 4)
         if let Some(ref mut obstacle_system) = self.dynamic_obstacle_system {
@@ -757,6 +780,10 @@ impl World {
         // Phase 2 Feature 1: Enhanced Sensory System
         let (visions, smells, sounds) = self.calculate_enhanced_senses(org);
 
+        // Climate sensing: get local temperature and humidity
+        let temperature_local = self.climate_system.get_temperature(org.x, org.y);
+        let humidity_local = self.climate_system.get_humidity(org.x, org.y);
+
         CognitiveInputs {
             depletion_n: depletions[0],
             depletion_ne: depletions[1],
@@ -833,6 +860,9 @@ impl World {
             sound_e: sounds[1],
             sound_s: sounds[2],
             sound_w: sounds[3],
+            // Climate sensing
+            temperature_local,
+            humidity_local,
         }
     }
 
@@ -1814,7 +1844,9 @@ impl World {
     fn update_organisms(&mut self) {
         for org in &mut self.organisms {
             if org.is_alive() {
-                org.update(&self.config);
+                // Get climate modifier for metabolism
+                let climate_metabolism_modifier = self.climate_system.get_metabolism_modifier(org.x, org.y);
+                org.update_with_climate(&self.config, climate_metabolism_modifier);
             }
         }
     }
@@ -2045,6 +2077,12 @@ impl World {
             let niche_bonus = self.calculate_niche_bonus(org);
             let frequency_bonus = self.calculate_frequency_bonus(org);
             reproduction_probability *= niche_bonus * frequency_bonus;
+
+            // Apply seasonal reproduction penalty
+            // Reproduction is favored in spring, penalized in winter
+            let season_repro_mult = self.seasonal_system.reproduction_multiplier();
+            reproduction_probability *= season_repro_mult;
+
             reproduction_probability = reproduction_probability.min(0.95); // Cap at 95%
 
             // Random chance based on fitness (replaces fixed 60% threshold)
@@ -2705,8 +2743,11 @@ impl World {
                         1.0
                     };
 
+                    // Get climate modifier (temperature/humidity affects food growth)
+                    let climate_mult = self.climate_system.get_food_regen_multiplier(xu, yu);
+
                     // Combined regeneration
-                    let total_mult = season_multiplier * terrain_mult * depletion_mult * patch_mult;
+                    let total_mult = season_multiplier * terrain_mult * depletion_mult * patch_mult * climate_mult;
                     let current = self.food_grid.get(xu, yu);
                     let new_food = (current + self.config.world.food_regen_rate * total_mult)
                         .min(self.config.world.food_max);
@@ -2848,6 +2889,41 @@ impl World {
                     predator_count: predator_count as i32,
                     lineage_count: self.lineage_tracker.surviving_count() as i32,
                     total_food: self.food_grid.total_food(),
+                });
+            }
+
+            // Environment state snapshot (season, day/night, climate)
+            if self.config.database.log_environment_state {
+                let is_daytime = if self.config.day_night.enabled {
+                    let cycle_pos = self.time % self.config.day_night.cycle_length;
+                    cycle_pos < self.config.day_night.cycle_length / 2
+                } else {
+                    true
+                };
+                let cycle_pos = self.time % self.config.day_night.cycle_length;
+
+                let (avg_temp, avg_humid) = if self.climate_system.is_enabled() {
+                    (
+                        self.climate_system.average_temperature(),
+                        self.climate_system.average_humidity(),
+                    )
+                } else {
+                    (0.5, 0.5)
+                };
+
+                let food_regen_mult = self.climate_system.get_global_food_regen_multiplier(
+                    self.seasonal_system.current_season,
+                    is_daytime,
+                );
+
+                let _ = sender.send(DbEvent::EnvironmentSnapshot {
+                    step: self.time,
+                    season: self.seasonal_system.current_season.name().to_string(),
+                    is_daytime,
+                    day_night_cycle_pos: cycle_pos,
+                    avg_temperature: avg_temp,
+                    avg_humidity: avg_humid,
+                    food_regen_multiplier: food_regen_mult,
                 });
             }
         }

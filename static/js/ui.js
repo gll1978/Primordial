@@ -193,24 +193,23 @@ const UI = {
         // Reference values for proportional scaling (density-based)
         const BASE_GRID = 80;
         const BASE_INITIAL_POP = 500;
-        const BASE_MAX_POP = 900;
 
-        // Function to update population based on grid size
+        // Function to update initial population based on grid size
+        // Note: max_population is NOT auto-scaled, it uses the config value
         const updatePopulationFromGrid = (gridSize) => {
             const newGridSize = parseInt(gridSize) || BASE_GRID;
             const scaleFactor = (newGridSize * newGridSize) / (BASE_GRID * BASE_GRID);
 
-            // Scale populations proportionally to area
+            // Scale only initial population proportionally to area
             const newInitialPop = Math.round(BASE_INITIAL_POP * scaleFactor);
-            const newMaxPop = Math.round(BASE_MAX_POP * scaleFactor);
 
-            console.log(`Grid size changed: ${newGridSize}, scale: ${scaleFactor.toFixed(2)}, pop: ${newInitialPop}/${newMaxPop}`);
+            console.log(`Grid size changed: ${newGridSize}, scale: ${scaleFactor.toFixed(2)}, initial pop: ${newInitialPop}`);
 
             document.getElementById('initial-pop').value = newInitialPop;
-            document.getElementById('max-pop').value = newMaxPop;
+            // max_population is NOT changed - uses server config value
         };
 
-        // Auto-scale population when grid size changes (both input and change events)
+        // Auto-scale initial population when grid size changes
         const gridSizeInput = document.getElementById('grid-size');
         gridSizeInput.addEventListener('input', (e) => updatePopulationFromGrid(e.target.value));
         gridSizeInput.addEventListener('change', (e) => updatePopulationFromGrid(e.target.value));
@@ -348,6 +347,21 @@ const UI = {
         document.getElementById('stat-lineages').textContent = snapshot.stats.lineage_count;
         document.getElementById('stat-brain').textContent = snapshot.stats.brain_mean.toFixed(2);
         document.getElementById('stat-food').textContent = snapshot.stats.total_food.toFixed(0);
+
+        // Update day/night indicator
+        const dayNightEl = document.getElementById('day-night-indicator');
+        if (dayNightEl) {
+            dayNightEl.textContent = snapshot.is_daytime ? '☀️' : '🌙';
+            dayNightEl.title = snapshot.is_daytime ? 'Daytime' : 'Nighttime';
+        }
+
+        // Update season indicator
+        const seasonEl = document.getElementById('season-indicator');
+        if (seasonEl) {
+            seasonEl.textContent = snapshot.current_season;
+            // Update CSS class for color coding
+            seasonEl.className = 'season-badge ' + snapshot.current_season.toLowerCase();
+        }
     },
 
     /**

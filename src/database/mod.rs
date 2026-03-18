@@ -93,6 +93,15 @@ pub enum DbEvent {
         failed_forages: u32,
         weight_updates_count: i32,
     },
+    EnvironmentSnapshot {
+        step: u64,
+        season: String,
+        is_daytime: bool,
+        day_night_cycle_pos: u64,
+        avg_temperature: f32,
+        avg_humidity: f32,
+        food_regen_multiplier: f32,
+    },
     /// Finalize: update run record and shut down
     Shutdown {
         total_steps: u64,
@@ -223,6 +232,10 @@ impl Database {
                             Self::write_world_snapshot(&pool, run_id, event).await;
                         }
                         DbEvent::LearningEvent { .. } => learning_batch.push(event),
+                        DbEvent::EnvironmentSnapshot { .. } => {
+                            // Environment snapshots are infrequent, write immediately
+                            Self::write_environment_snapshot(&pool, run_id, event).await;
+                        }
                     }
 
                     // Drain remaining buffered events without blocking
@@ -254,6 +267,9 @@ impl Database {
                                 Self::write_world_snapshot(&pool, run_id, event).await;
                             }
                             DbEvent::LearningEvent { .. } => learning_batch.push(event),
+                            DbEvent::EnvironmentSnapshot { .. } => {
+                                Self::write_environment_snapshot(&pool, run_id, event).await;
+                            }
                         }
                     }
 
@@ -512,6 +528,28 @@ impl Database {
             .bind(predator_count)
             .bind(lineage_count)
             .bind(total_food)
+            .execute(pool)
+            .await;
+        }
+    }
+
+    async fn write_environment_snapshot(pool: &PgPool, run_id: Uuid, event: DbEvent) {
+        if let DbEvent::EnvironmentSnapshot {
+            step, season, is_daytime, day_night_cycle_pos,
+            avg_temperature, avg_humidity, food_regen_multiplier,
+        } = event
+        {
+            let _ = sqlx::query(
+                "INSERT INTO environment_state (run_id, step, season, is_daytime, day_night_cycle_pos, avg_temperature, avg_humidity, food_regen_multiplier) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)"
+            )
+            .bind(run_id)
+            .bind(step as i64)
+            .bind(&season)
+            .bind(is_daytime)
+            .bind(day_night_cycle_pos as i64)
+            .bind(avg_temperature)
+            .bind(avg_humidity)
+            .bind(food_regen_multiplier)
             .execute(pool)
             .await;
         }

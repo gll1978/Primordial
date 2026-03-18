@@ -8,7 +8,9 @@
 //! - Resource depletion (over-exploitation tracking)
 //! - Large prey and cooperation (B3)
 //! - Dynamic obstacles (Phase 2 Feature 4)
+//! - Climate system (temperature and humidity)
 
+pub mod climate;
 pub mod depletion;
 pub mod dynamic_obstacles;
 pub mod environment_manager;
@@ -19,6 +21,7 @@ pub mod predation;
 pub mod seasons;
 pub mod terrain;
 
+pub use climate::{ClimateConfig, ClimateSystem};
 pub use depletion::{DepletionConfig, DepletionState, DepletionSystem};
 pub use dynamic_obstacles::{DynamicObstacle, DynamicObstacleConfig, DynamicObstacleSystem};
 pub use environment_manager::{EnvironmentConfig, EnvironmentManager};

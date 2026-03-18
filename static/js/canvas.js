@@ -201,6 +201,12 @@ const WorldCanvas = {
             }
         }
 
+        // Draw night overlay if it's nighttime
+        if (!snapshot.is_daytime) {
+            ctx.fillStyle = 'rgba(0, 0, 40, 0.4)';
+            ctx.fillRect(offsetX, offsetY, gridPixels, gridPixels);
+        }
+
         // Draw organisms
         for (const org of snapshot.organisms) {
             const centerX = offsetX + (org.x + 0.5) * cellSize;
