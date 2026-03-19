@@ -1,0 +1,223 @@
+# PRIMORDIAL V2 — d-002: Erbivori con Arti (pressione locomotoria indiretta)
+# Direttiva: d-002
+# Scopo: Spingere gli erbivori a sviluppare comportamenti locomotori complessi
+#        aumentando la pressione predatoria (chi si muove di più sopravvive)
+#        e disperdendo il cibo (chi esplora di più trova più risorse).
+#        Risultato atteso: selezione indiretta per pattern neurali "arti-simili"
+#        che massimizzano la copertura spaziale.
+# Branch: exp/d-002-erbivori-arti
+# Config copiata da: runs/20260318/config.yaml con modifiche locomotorie.
+
+world:
+  grid_size: 80
+  food_regen_rate: 0.4
+  food_max: 100.0
+  initial_food_density: 0.7
+
+organisms:
+  initial_population: 500
+  initial_energy: 120.0
+  reproduction_cost: 30.0
+  reproduction_threshold: 50.0
+  metabolism_base: 0.38
+  food_energy: 23.0
+  move_cost: 0.08        # Abbassato da 0.2 → muoversi è più conveniente
+
+neural:
+  n_inputs: 95
+  n_outputs: 15
+  use_instincts: false
+
+evolution:
+  mutation_rate: 0.10
+  mutation_strength: 0.3
+  add_neuron_rate: 0.50
+  add_connection_rate: 0.30
+
+safety:
+  max_population: 70000
+  max_energy: 500.0
+  max_age: 5000
+  max_neurons: 30
+  max_steps: 200000      # Run limitato (non-extinction), sufficiente per osservare selezione
+  max_memory_mb: 0
+  memory_warning_percent: 70.0
+  memory_critical_percent: 85.0
+
+logging:
+  checkpoint_interval: 500
+  stats_interval: 50
+  log_level: info
+
+predation:
+  enabled: true
+  damage_multiplier: 15.0    # Alzato da 10.0 → predazione più letale, fuga cruciale
+  size_energy_multiplier: 25.0
+  stored_energy_fraction: 0.5
+  attack_cooldown: 2         # Abbassato da 3 → predatori attaccano più spesso
+
+seasons:
+  enabled: true
+  season_length: 1000
+
+food:
+  plant_regen_rate: 0.8
+  fruit_regen_rate: 0.3
+  insect_regen_rate: 0.2
+  meat_decay_rate: 0.95
+  max_plant: 80.0
+  max_meat: 50.0
+  max_fruit: 40.0
+  max_insects: 30.0
+
+terrain:
+  enabled: true
+  clustered: false
+  barrier: false
+  barrier_vertical: true
+  realistic: true
+  generation:
+    elevation_scale: 0.05
+    humidity_scale: 0.04
+    mountain_threshold: 0.7
+    water_threshold: 0.25
+    mountain_ridge_count: 2
+    lake_count: 3
+    lake_min_radius: 2
+    lake_max_radius: 5
+    river_count: 2
+    smoothing_passes: 2
+    noise_octaves: 4
+    noise_persistence: 0.5
+    noise_lacunarity: 2.0
+
+depletion:
+  enabled: false
+  organism_threshold: 8
+  food_threshold: 3.0
+  depletion_time: 150
+  recovery_delay: 300
+  recovery_time: 400
+
+reproduction:
+  enabled: false
+  min_energy: 80.0
+  energy_cost: 35.0
+  offspring_energy: 50.0
+  cooldown: 60
+  inbreeding_fitness_cost: 0.25
+  max_mating_distance: 1
+
+large_prey:
+  enabled: true
+  max_large_prey: 2
+  spawn_chance: 0.001
+  min_population: 50
+
+food_patches:
+  enabled: true
+  patch_count: 40           # Alzato da 25 → cibo più disperso, esplorare premia
+  initial_capacity: 80.0    # Abbassato da 120.0 → ogni patch si svuota prima
+  depletion_rate: 3.0
+  regeneration_rate: 1.5
+  regeneration_time: 150
+  min_distance: 6           # Abbassato da 8 → patch più vicini ma più numerosi
+
+procedural_environment:
+  enabled: true
+  reshuffle_interval: 100
+  reshuffle_interval_steps: 50000
+  base_seed: 42
+  variation_level: 0.3
+
+behavior_tracking:
+  enabled: true
+  sample_rate: 10
+  max_tracked: 200
+
+database:
+  enabled: true
+  url: "postgresql://primordial:primordial@localhost/primordial_v2"
+  snapshot_interval: 25
+  log_learning_events: true
+  log_environment_state: true
+
+learning:
+  enabled: true
+  learning_rate: 0.001
+  decay_rate: 0.001
+  weight_limit: 5.0
+  consolidation_threshold: 0.1
+  working_memory_size: 100
+  scale_with_brain: true
+  min_learning_rate: 0.0005
+  max_learning_rate: 0.01
+
+cognitive_gate:
+  enabled: true
+  simple_ratio: 0.90
+  medium_ratio: 0.08
+  simple_complexity_min: 0.00
+  simple_complexity_max: 0.15
+  medium_complexity_min: 0.15
+  medium_complexity_max: 0.50
+  complex_complexity_min: 0.50
+  complex_complexity_max: 1.00
+  tolerance: 0.25
+  failure_cost: 0.5
+  simple_energy: 28.0
+  medium_energy: 33.0
+  complex_energy: 40.0
+
+brain_tax:
+  enabled: false
+  threshold: 10
+  cost_per_layer: 0.02
+
+sensory:
+  enhanced_senses: true
+  vision_fovea_range: 5
+  vision_peripheral_range: 10
+  olfaction_range: 8
+  audition_range: 6
+
+day_night:
+  enabled: true
+  cycle_length: 2000
+  night_vision_penalty: 0.3
+  night_olfaction_bonus: 1.5
+
+memory:
+  enabled: true
+  buffer_multiplier: 2
+  min_buffer_size: 4
+  max_buffer_size: 40
+  decay_rate: 0.05
+  features_per_frame: 8
+
+dynamic_obstacles:
+  enabled: true
+  max_obstacles: 30
+  initial_obstacles: 15
+  movement_chance: 0.01
+  spawn_rate: 0.001
+  despawn_rate: 0.0005
+  min_lifetime: 100
+
+diversity:
+  enabled: true
+  speciation_enabled: true
+  min_genetic_distance: 5
+  max_genetic_distance: 20
+  boundary_mating_probability: 0.3
+  niche_enabled: true
+  niche_specialist_bonus: 1.4
+  niche_generalist_penalty: 0.85
+  niche_adaptation_time: 150
+  terrain_diet_synergy_bonus: 1.25
+  frequency_dependent_enabled: true
+  rare_strategy_max_bonus: 1.8    # Alzato da 1.6 → strategie locomotorie rare più premiate
+  rare_strategy_threshold: 0.08
+  common_strategy_penalty: 0.7
+  common_strategy_threshold: 0.25
+  strategy_classification: "combined"
